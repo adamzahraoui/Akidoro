@@ -1,0 +1,18 @@
+# Supabase project configuration for Akidoro.
+# `project_id` is the local CLI project name; link with `supabase link` before
+# deploying. Secrets are never stored here — set them with
+# `supabase secrets set ...` (or the dashboard).
+
+project_id = "akidoro"
+
+[functions.admin-campaigns]
+# Only signed-in admins (or the service role) may call this.
+verify_jwt = true
+
+[functions.process-email-queue]
+# Invoked by admins or the scheduler using the service-role key.
+verify_jwt = true
+
+[functions.unsubscribe]
+# Public endpoint: the signed token in the URL is the credential.
+verify_jwt = false

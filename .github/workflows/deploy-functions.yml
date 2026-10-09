@@ -1,0 +1,31 @@
+name: Deploy Supabase Edge Functions
+
+# Manual only. Requires:
+#   secrets.SUPABASE_ACCESS_TOKEN  (personal access token)
+#   secrets.SUPABASE_PROJECT_ID    (project ref)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-functions
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Deploy functions
+        run: |
+          supabase functions deploy admin-campaigns --project-ref "$SUPABASE_PROJECT_ID"
+          supabase functions deploy process-email-queue --project-ref "$SUPABASE_PROJECT_ID"
+          supabase functions deploy unsubscribe --project-ref "$SUPABASE_PROJECT_ID"
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}

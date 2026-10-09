@@ -1,0 +1,18 @@
+{
+  "name": "Akidoro",
+  "short_name": "Akidoro",
+  "description": "A distraction-free Pomodoro timer with weekly statistics, optional Google sign-in and link-based music.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#f7f4ee",
+  "theme_color": "#3e6745",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

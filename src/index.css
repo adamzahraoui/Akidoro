@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-canvas-light text-stone-800 antialiased dark:bg-canvas-dark dark:text-stone-100;
+  background-image: none;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-stone-200 bg-surface-light shadow-sm dark:border-stone-700/70 dark:bg-surface-dark;
+  }
+  .muted {
+    @apply text-stone-500 dark:text-stone-400;
+  }
+  .subtle-border {
+    @apply border-stone-200 dark:border-stone-700/70;
+  }
+}
+
+/* Respect reduced-motion preferences. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Focus ring used across interactive elements. */
+.focus-ring:focus-visible {
+  @apply outline-none ring-2 ring-accent-500 ring-offset-2 ring-offset-canvas-light dark:ring-offset-canvas-dark;
+}
+
+input[type='range'] {
+  @apply h-1.5 w-full cursor-pointer appearance-none rounded-full bg-stone-300 accent-accent-500 dark:bg-stone-600;
+}

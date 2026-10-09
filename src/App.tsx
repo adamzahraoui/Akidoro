@@ -1,0 +1,91 @@
+import { useState } from 'react';
+import { Nav } from './components/Nav';
+import type { View } from './components/Nav';
+import { TimerView } from './components/timer/TimerView';
+import { StatisticsView } from './components/stats/StatisticsView';
+import { SettingsView } from './components/settings/SettingsView';
+import { AdminView } from './components/admin/AdminView';
+import { useApp } from './context/AppContext';
+
+function GuestMergeBanner() {
+  const { guestMergePending, mergeGuestData, dismissGuestMerge } = useApp();
+  if (!guestMergePending) return null;
+  return (
+    <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
+      <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
+        <p className="text-sm">
+          You have guest session history saved in this browser. Merge it into your account so it
+          syncs across devices?
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void mergeGuestData()}
+            className="focus-ring rounded-xl bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-700"
+          >
+            Merge
+          </button>
+          <button
+            type="button"
+            onClick={dismissGuestMerge}
+            className="focus-ring rounded-xl px-3 py-1.5 text-sm font-medium text-stone-600 hover:bg-stone-200/70 dark:text-stone-300 dark:hover:bg-stone-700/50"
+          >
+            Not now
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AuthErrorBanner() {
+  const { authError, dismissAuthError } = useApp();
+  if (!authError) return null;
+  return (
+    <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
+      <div
+        role="alert"
+        className="card flex flex-wrap items-center justify-between gap-3 border-red-300 p-4 dark:border-red-800"
+      >
+        <p className="text-sm text-red-700 dark:text-red-300">{authError}</p>
+        <button
+          type="button"
+          onClick={dismissAuthError}
+          className="focus-ring rounded-xl px-3 py-1.5 text-sm font-medium text-stone-600 hover:bg-stone-200/70 dark:text-stone-300 dark:hover:bg-stone-700/50"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [view, setView] = useState<View>('timer');
+  const { user } = useApp();
+
+  return (
+    <div className="min-h-full">
+      <Nav view={view} onChange={setView} />
+      <AuthErrorBanner />
+      <GuestMergeBanner />
+      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+        {/* All views stay mounted so background music and timer state are never interrupted. */}
+        <div hidden={view !== 'timer'}>
+          <TimerView />
+        </div>
+        <div hidden={view !== 'stats'}>
+          <StatisticsView />
+        </div>
+        <div hidden={view !== 'settings'}>
+          <SettingsView />
+        </div>
+        {user?.isAdmin ? (
+          <div hidden={view !== 'admin'}>
+            <AdminView />
+          </div>
+        ) : null}
+      </main>
+    </div>
+  );
+}

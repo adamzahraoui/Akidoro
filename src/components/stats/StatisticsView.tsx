@@ -1,0 +1,176 @@
+import { useMemo, useState } from 'react';
+import { useApp } from '../../context/AppContext';
+import { computeWeek, hasAnySessions, weekStartFor } from '../../stats/statistics';
+import type { WeekStats } from '../../stats/statistics';
+import {
+  addDays,
+  formatDateRange,
+  formatDuration,
+  formatShortDate,
+  formatWeekday,
+} from '../../lib/format';
+import { Button } from '../ui/Button';
+import { Card, CardTitle } from '../ui/Card';
+
+function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded-xl border subtle-border bg-surface-light/60 p-3 dark:bg-surface-dark/60">
+      <p className="text-xs uppercase tracking-wide muted">{label}</p>
+      <p className="mt-1 text-xl font-semibold tabular-nums">{value}</p>
+      {sub ? <p className="text-xs muted">{sub}</p> : null}
+    </div>
+  );
+}
+
+function DailyChart({ week }: { week: WeekStats }) {
+  const max = Math.max(
+    1,
+    ...week.days.map((d) => Math.max(d.focusSec, d.breakSec)),
+  );
+  return (
+    <div>
+      <div className="flex h-48 items-end justify-between gap-2" role="img" aria-label="Focus and break time per day">
+        {week.days.map((d) => {
+          const focusPct = (d.focusSec / max) * 100;
+          const breakPct = (d.breakSec / max) * 100;
+          return (
+            <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
+              <div className="flex h-40 w-full items-end justify-center gap-1">
+                <div
+                  className="w-3 rounded-t bg-accent-500 sm:w-4"
+                  style={{ height: `${focusPct}%` }}
+                  title={`Focus ${formatDuration(d.focusSec)}`}
+                />
+                <div
+                  className="w-3 rounded-t bg-stone-400 dark:bg-stone-500"
+                  style={{ height: `${breakPct}%` }}
+                  title={`Break ${formatDuration(d.breakSec)}`}
+                />
+              </div>
+              <span className="text-[11px] muted">{formatWeekday(d.date).slice(0, 3)}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-3 flex items-center justify-center gap-4 text-xs muted">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-accent-500" /> Focus
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 rounded-sm bg-stone-400 dark:bg-stone-500" /> Break
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export function StatisticsView() {
+  const { sessions } = useApp();
+  const [weekStart, setWeekStart] = useState(() => weekStartFor(Date.now()));
+  const week = useMemo(() => computeWeek(sessions, weekStart), [sessions, weekStart]);
+  const currentWeekStart = weekStartFor(Date.now());
+  const isCurrent = weekStart === currentWeekStart;
+
+  const weekEmpty = !week.days.some((d) => d.focusSec + d.breakSec > 0);
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold">Weekly statistics</h1>
+            <p className="text-sm muted">{formatDateRange(week.weekStart, week.weekEnd)}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => setWeekStart((w) => addDays(w, -7))} aria-label="Previous week">
+              ← Prev
+            </Button>
+            <Button size="sm" onClick={() => setWeekStart(currentWeekStart)} disabled={isCurrent}>
+              This week
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setWeekStart((w) => addDays(w, 7))}
+              disabled={isCurrent}
+              aria-label="Next week"
+            >
+              Next →
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {!hasAnySessions(sessions) ? (
+        <Card>
+          <p className="py-8 text-center text-sm muted">
+            No sessions recorded yet. Start a focus session and it will appear here automatically.
+          </p>
+        </Card>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <StatTile label="Focus time" value={formatDuration(week.totalFocusSec)} />
+            <StatTile label="Break time" value={formatDuration(week.totalBreakSec)} />
+            <StatTile label="Short breaks" value={formatDuration(week.totalShortBreakSec)} />
+            <StatTile label="Long breaks" value={formatDuration(week.totalLongBreakSec)} />
+            <StatTile label="Focus sessions" value={String(week.completedFocusSessions)} sub="completed" />
+          </div>
+
+          <Card>
+            <CardTitle hint="Focus vs break, Mon–Sun">Daily activity</CardTitle>
+            {weekEmpty ? (
+              <p className="py-8 text-center text-sm muted">No activity recorded this week.</p>
+            ) : (
+              <DailyChart week={week} />
+            )}
+          </Card>
+
+          <Card>
+            <CardTitle hint="Times use your local timezone">Daily totals</CardTitle>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <caption className="sr-only">Daily focus and break totals for the selected week</caption>
+                <thead>
+                  <tr className="border-b subtle-border text-left muted">
+                    <th scope="col" className="py-2 pr-4 font-medium">Day</th>
+                    <th scope="col" className="py-2 pr-4 text-right font-medium">Focus</th>
+                    <th scope="col" className="py-2 pr-4 text-right font-medium">Short</th>
+                    <th scope="col" className="py-2 pr-4 text-right font-medium">Long</th>
+                    <th scope="col" className="py-2 text-right font-medium">Break</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {week.days.map((d) => (
+                    <tr key={d.date} className="border-b subtle-border last:border-0">
+                      <th scope="row" className="py-2 pr-4 text-left font-normal">
+                        {formatWeekday(d.date)} <span className="muted">{formatShortDate(d.date)}</span>
+                        {d.focusSessions > 0 ? (
+                          <span className="ml-2 rounded bg-accent-100 px-1.5 py-0.5 text-[10px] font-medium text-accent-800 dark:bg-accent-900 dark:text-accent-200">
+                            {d.focusSessions} session{d.focusSessions > 1 ? 's' : ''}
+                          </span>
+                        ) : null}
+                      </th>
+                      <td className="py-2 pr-4 text-right tabular-nums">{formatDuration(d.focusSec)}</td>
+                      <td className="py-2 pr-4 text-right tabular-nums">{formatDuration(d.shortBreakSec)}</td>
+                      <td className="py-2 pr-4 text-right tabular-nums">{formatDuration(d.longBreakSec)}</td>
+                      <td className="py-2 text-right tabular-nums">{formatDuration(d.breakSec)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="font-medium">
+                    <th scope="row" className="pt-2 pr-4 text-left">Total</th>
+                    <td className="pt-2 pr-4 text-right tabular-nums">{formatDuration(week.totalFocusSec)}</td>
+                    <td className="pt-2 pr-4 text-right tabular-nums">{formatDuration(week.totalShortBreakSec)}</td>
+                    <td className="pt-2 pr-4 text-right tabular-nums">{formatDuration(week.totalLongBreakSec)}</td>
+                    <td className="pt-2 text-right tabular-nums">{formatDuration(week.totalBreakSec)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
+    </div>
+  );
+}
