@@ -18,34 +18,11 @@ function relativeTime(ms: number): string {
 
 /** Autosave indicator: guests persist locally; signed-in users get cloud sync states. */
 function SaveStatus() {
-  const { sync, user } = useApp();
-  if (!user) {
-    return <span className="text-xs muted">Saved on this device</span>;
-  }
-  switch (sync.phase) {
-    case 'syncing':
-      return <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Saving…</span>;
-    case 'offline':
-      return <span className="text-xs font-medium text-stone-500 dark:text-stone-400">Offline — will save when back online</span>;
-    case 'error':
-      return (
-        <span className="text-xs font-medium text-red-600 dark:text-red-400" title={sync.error ?? undefined}>
-          Save failed — retrying
-        </span>
-      );
-    case 'synced':
-      return (
-        <span className="text-xs font-medium text-accent-700 dark:text-accent-300">
-          {sync.pending > 0 ? 'Saving…' : 'All changes saved'}
-        </span>
-      );
-    default:
-      return <span className="text-xs muted">Saved</span>;
-  }
+  return <span className="text-xs muted">Saved on this device</span>;
 }
 
 export function NotesView() {
-  const { notes, createNote, updateNote, deleteNote, restoreNote, user } = useApp();
+  const { notes, createNote, updateNote, deleteNote, restoreNote } = useApp();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [deletedId, setDeletedId] = useState<string | null>(null);
   const titleRef = useRef<HTMLInputElement>(null);
@@ -84,14 +61,10 @@ export function NotesView() {
     setSelectedId(deletedId);
   };
 
-  const hint = user
-    ? 'Notes sync to your account across devices'
-    : 'Notes stay on this device';
-
   return (
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <CardTitle hint={hint}>Notes</CardTitle>
+        <CardTitle hint="Local to this browser">Notes</CardTitle>
         <div className="flex items-center gap-3">
           <SaveStatus />
           <Button size="sm" variant="primary" onClick={handleNew}>
@@ -113,9 +86,7 @@ export function NotesView() {
         <div className="mt-6 rounded-xl border border-dashed subtle-border p-8 text-center">
           <p className="text-sm font-medium">No notes yet</p>
           <p className="mt-1 text-sm muted">
-            {user
-              ? 'Notes keep working alongside your timer and stay in sync across your devices.'
-              : 'Notes are kept on this device and never leave your machine unless you sign in.'}
+            Notes are kept on this device and never leave your machine.
           </p>
           <div className="mt-4">
             <Button variant="primary" onClick={handleNew}>

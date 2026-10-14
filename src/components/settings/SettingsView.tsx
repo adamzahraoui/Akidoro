@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { api } from '../../lib/api';
 import {
   getNotificationPermission,
   requestNotificationPermission,
@@ -12,112 +11,8 @@ import { Card, CardTitle } from '../ui/Card';
 import { NumberField } from '../ui/NumberField';
 import { Toggle } from '../ui/Toggle';
 
-function AccountSection() {
-  const { user, login, logout, googleLoginConfigured, sync } = useApp();
-  const [optIn, setOptIn] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!user) return;
-    api
-      .getEmailPreferences()
-      .then((prefs) => setOptIn(prefs.optIn))
-      .catch(() => undefined);
-  }, [user]);
-
-  const toggleEmail = async (value: boolean) => {
-    setSaving(true);
-    setNotice(null);
-    try {
-      const prefs = await api.putEmailPreferences(value);
-      setOptIn(prefs.optIn);
-    } catch {
-      setNotice('Could not update email preferences.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (!user) {
-    return (
-      <Card>
-        <CardTitle hint="Optional">Account & cloud sync</CardTitle>
-        <p className="text-sm muted">
-          Sign in with Google to sync your timer history and settings across devices. Your progress
-          is stored in your own Akidoro account (Supabase) and is visible only to you.
-        </p>
-        <div className="mt-4">
-          {googleLoginConfigured ? (
-            <Button variant="primary" onClick={login}>
-              Sign in with Google
-            </Button>
-          ) : (
-            <p className="text-xs muted">Sign-in is not configured. Set the Supabase environment variables to enable it.</p>
-          )}
-        </div>
-      </Card>
-    );
-  }
-
-  const phaseText: Record<string, string> = {
-    syncing: 'syncing…',
-    synced: 'up to date',
-    offline: 'offline — changes will sync when you reconnect',
-    error: 'sync issue',
-    disabled: 'disabled',
-  };
-  const lastSynced = sync.lastSyncedAt
-    ? new Date(sync.lastSyncedAt).toLocaleTimeString()
-    : null;
-
-  return (
-    <Card>
-      <CardTitle hint="Signed in">Account & cloud sync</CardTitle>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          {user.picture ? (
-            <img
-              src={user.picture}
-              alt=""
-              className="h-9 w-9 rounded-full"
-              referrerPolicy="no-referrer"
-            />
-          ) : (
-            <span className="grid h-9 w-9 place-items-center rounded-full bg-accent-600 text-sm font-semibold text-white">
-              {(user.name ?? user.email).charAt(0).toUpperCase()}
-            </span>
-          )}
-          <div>
-            <p className="text-sm font-medium">{user.name ?? 'Signed in'}</p>
-            <p className="text-xs muted">{user.email}</p>
-          </div>
-        </div>
-        <Button variant="ghost" onClick={() => void logout()}>
-          Sign out
-        </Button>
-      </div>
-      <p className="mt-3 text-xs muted">
-        Sync status: {phaseText[sync.phase] ?? sync.phase}
-        {lastSynced ? ` · last synced ${lastSynced}` : ''}
-        {sync.error ? ` · ${sync.error}` : ''}
-      </p>
-      <div className="mt-2">
-        <Toggle
-          label="Email me product updates"
-          description="Occasional news about Akidoro. Unsubscribe any time — no account needed."
-          checked={optIn}
-          onChange={toggleEmail}
-          disabled={saving}
-        />
-        {notice ? <p className="text-xs text-red-600 dark:text-red-400">{notice}</p> : null}
-      </div>
-    </Card>
-  );
-}
-
 export function SettingsView() {
-  const { settings, updateSettings, resetSettings, exportHistory, exportBackup, importBackup, clearHistory, sessions, user } = useApp();
+  const { settings, updateSettings, resetSettings, exportHistory, exportBackup, importBackup, clearHistory, sessions } = useApp();
   const [permission, setPermission] = useState(getNotificationPermission());
   const [confirmClear, setConfirmClear] = useState(false);
   const [exported, setExported] = useState(false);
@@ -287,16 +182,12 @@ export function SettingsView() {
         />
       </Card>
 
-      <AccountSection />
-
       <Card>
         <CardTitle hint={`${sessions.length} stored session${sessions.length === 1 ? '' : 's'}`}>
           Data & privacy
         </CardTitle>
         <p className="text-sm muted">
-          {user
-            ? 'Your settings and session history are saved to your Akidoro account and synced across your devices. The timer itself always runs locally, so it keeps working offline. Music plays from pasted links through the official provider embeds, so no music account is connected.'
-            : 'Guest data (notes, settings, timer progress and session history) is stored only in this browser profile: it is not synced across devices and may be lost if site data is cleared. Sharing a browser profile means sharing this local data.'}
+          'Notes, settings, timer progress and session history are stored only in this browser profile: they are not synced across devices and may be lost if site data is cleared. Sharing a browser profile means sharing this local data.'
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button onClick={onExport} disabled={sessions.length === 0}>

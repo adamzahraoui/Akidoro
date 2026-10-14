@@ -5,7 +5,6 @@ import { TimerView } from './components/timer/TimerView';
 import { StatisticsView } from './components/stats/StatisticsView';
 import { NotesView } from './components/notes/NotesView';
 import { SettingsView } from './components/settings/SettingsView';
-import { AdminView } from './components/admin/AdminView';
 import { useApp } from './context/AppContext';
 
 function GuestMergeBanner() {
@@ -39,37 +38,42 @@ function GuestMergeBanner() {
   );
 }
 
-function AuthErrorBanner() {
-  const { authError, dismissAuthError } = useApp();
-  if (!authError) return null;
-  return (
-    <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
-      <div
-        role="alert"
-        className="card flex flex-wrap items-center justify-between gap-3 border-red-300 p-4 dark:border-red-800"
-      >
-        <p className="text-sm text-red-700 dark:text-red-300">{authError}</p>
-        <button
-          type="button"
-          onClick={dismissAuthError}
-          className="focus-ring rounded-xl px-3 py-1.5 text-sm font-medium text-stone-600 hover:bg-stone-200/70 dark:text-stone-300 dark:hover:bg-stone-700/50"
-        >
-          Dismiss
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function App() {
   const [view, setView] = useState<View>('timer');
-  const { user } = useApp();
+  const { accountImportPending, accountScopeIds, importAccountData, dismissAccountImport } = useApp();
 
   return (
     <div className="min-h-full">
       <Nav view={view} onChange={setView} />
-      <AuthErrorBanner />
       <GuestMergeBanner />
+      {accountImportPending ? (
+        <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
+          <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
+            <p className="text-sm">
+              Found locally stored account data ({accountScopeIds.join(', ')}). Import one set into this browser?
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {accountScopeIds.map((scope) => (
+                <button
+                  key={scope}
+                  type="button"
+                  onClick={() => void importAccountData(scope)}
+                  className="focus-ring rounded-xl bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-700"
+                >
+                  Import {scope}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={dismissAccountImport}
+                className="focus-ring rounded-xl px-3 py-1.5 text-sm font-medium text-stone-600 hover:bg-stone-200/70 dark:text-stone-300 dark:hover:bg-stone-700/50"
+              >
+                Not now
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         {/* All views stay mounted so background music and timer state are never interrupted. */}
         <div hidden={view !== 'timer'}>
@@ -84,11 +88,6 @@ export default function App() {
         <div hidden={view !== 'settings'}>
           <SettingsView />
         </div>
-        {user?.isAdmin ? (
-          <div hidden={view !== 'admin'}>
-            <AdminView />
-          </div>
-        ) : null}
       </main>
     </div>
   );

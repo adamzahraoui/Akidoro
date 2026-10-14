@@ -16,18 +16,12 @@ import {
   readSessions,
   readSettingsMeta,
   readStoredSettings,
-  removeKey,
   replaceSessions,
   setStorageScope,
-  writeJSON,
   writeNotes,
   writeSettingsMeta,
   writeStoredSettings,
 } from '../lib/storage';
-import { ApiError, api, sanitizeSession } from '../lib/api';
-import type { AuthUser, ServerNote, ServerSession } from '../lib/api';
-import { authErrorMessage, hasAuthRedirect, parseAuthRedirect } from '../lib/authRedirect';
-import { supabase, supabaseConfigured } from '../lib/supabase';
 import { mergeSessions } from '../lib/merge';
 import { activeNotes, mergeNotes } from '../lib/notesMerge';
 import { uid } from '../lib/id';
@@ -35,17 +29,12 @@ import { useTimer } from '../timer/useTimer';
 import type { SessionEndEvent, UseTimerResult } from '../timer/useTimer';
 import { playCompletionChime } from '../lib/sound';
 import { showNotification } from '../lib/notifications';
-import { formatClock, formatDuration, modeLabel } from '../lib/format';
-
-/** Sync is disabled under test and when Supabase is not configured. */
-const SYNC_ENABLED = import.meta.env.MODE !== 'test' && supabaseConfigured;
-
-export type SyncPhase = 'disabled' | 'offline' | 'syncing' | 'synced' | 'error';
+import { formatDuration } from '../lib/format';
 
 export interface SyncInfo {
-  phase: SyncPhase;
+  phase: 'local';
   pending: number;
-  lastSyncedAt: number | null;
+  lastSyncedAt: null;
   error: string | null;
 }
 
@@ -59,14 +48,19 @@ interface AppContextValue {
   exportBackup: () => string;
   importBackup: (json: string) => Promise<{ ok: boolean; message: string }>;
   timer: UseTimerResult;
-  // Notes
   notes: Note[];
   createNote: () => string;
   updateNote: (id: string, patch: { title?: string; content?: string }) => void;
   deleteNote: (id: string) => void;
   restoreNote: (id: string) => void;
-  // Accounts & cloud sync
-  user: AuthUser | null;
+  accountImportPending: boolean;
+  accountScopeIds: string[];
+  importAccountData: (scopeId: string) => Promise<void>;
+  dismissAccountImport: () => void;
+  guestMergePending: boolean;
+  mergeGuestData: () => Promise<void>;
+  dismissGuestMerge: () => void;
+  user: null;
   authReady: boolean;
   googleLoginConfigured: boolean;
   login: () => void;
@@ -75,9 +69,6 @@ interface AppContextValue {
   dismissAuthError: () => void;
   sync: SyncInfo;
   syncNow: () => Promise<void>;
-  guestMergePending: boolean;
-  mergeGuestData: () => Promise<void>;
-  dismissGuestMerge: () => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -99,193 +90,50 @@ function pickSettings(raw: Record<string, unknown> | null): Settings {
   return out;
 }
 
-function initialSync(): SyncInfo {
-  return {
-    phase: SYNC_ENABLED ? 'offline' : 'disabled',
-    pending: 0,
-    lastSyncedAt: null,
-    error: null,
-  };
+function findAccountScopes(): string[] {
+  if (typeof localStorage === 'undefined') return [];
+  const scopes = new Set<string>();
+  const bases = [STORAGE_KEYS.notes, STORAGE_KEYS.sessions, STORAGE_KEYS.settings];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const key = localStorage.key(i);
+    if (!key) continue;
+    for (const base of bases) {
+      if (key === base) continue;
+      const prefix = `${base}.`;
+      if (key.startsWith(prefix)) {
+        const scope = key.slice(prefix.length);
+        if (scope && scope !== STORAGE_KEYS.notes && !scope.endsWith('.meta')) {
+          scopes.add(scope);
+        }
+      }
+    }
+  }
+  return [...scopes].sort();
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
-  const settingsUpdatedAtRef = useRef<string | null>(SYNC_ENABLED ? readSettingsMeta() : null);
+  const settingsUpdatedAtRef = useRef<string | null>(readSettingsMeta());
 
   const [sessions, setSessions] = useState<Session[]>(readSessions);
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
 
-  // All note records including soft-delete tombstones; the UI sees activeNotes().
   const [notesAll, setNotesAll] = useState<Note[]>(readNotes);
   const notesAllRef = useRef(notesAll);
   notesAllRef.current = notesAll;
 
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const userRef = useRef<AuthUser | null>(null);
-  const [authReady, setAuthReady] = useState(!SYNC_ENABLED);
-  const [googleLoginConfigured] = useState(supabaseConfigured);
-  const [sync, setSync] = useState<SyncInfo>(initialSync);
-  const [guestMergePending, setGuestMergePending] = useState(false);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const pushTimer = useRef<number | null>(null);
-  const clearingRef = useRef(false);
-  // Bumped whenever the identity changes so a late response from a previous
-  // account can never mutate state belonging to the next one.
-  const epochRef = useRef(0);
+  const [accountScopeIds, setAccountScopeIds] = useState<string[]>(findAccountScopes());
+  const [accountImportPending, setAccountImportPending] = useState(accountScopeIds.length > 0);
+  const [guestMergePending, setGuestMergePending] = useState(hasGuestData());
 
-  /** Persist + publish the full note set (incl. tombstones). */
   const commitNotes = useCallback((next: Note[]) => {
     writeNotes(next);
     setNotesAll(next);
     notesAllRef.current = next;
   }, []);
-
-  /** Drop the signed-in identity and fall back to guest-scoped local data. */
-  const resetToGuest = useCallback((message: string | null = null) => {
-    epochRef.current += 1;
-    setStorageScope(null);
-    removeKey(STORAGE_KEYS.authUser);
-    userRef.current = null;
-    setUser(null);
-    setGuestMergePending(false);
-    const nextSessions = readSessions();
-    setSessions(nextSessions);
-    sessionsRef.current = nextSessions;
-    commitNotes(readNotes());
-    const nextSettings = loadSettings();
-    setSettings(nextSettings);
-    settingsRef.current = nextSettings;
-    settingsUpdatedAtRef.current = readSettingsMeta();
-    setSync(initialSync());
-    if (message) setAuthError(message);
-  }, [commitNotes]);
-
-  const pushPending = useCallback(async () => {
-    if (!SYNC_ENABLED || !userRef.current || clearingRef.current) return;
-    const epoch = epochRef.current;
-    try {
-      setSync((s) => ({ ...s, phase: 'syncing' }));
-      await api.bulkSessions(sessionsRef.current as ServerSession[]);
-      if (epoch !== epochRef.current) return;
-      const iso = settingsUpdatedAtRef.current ?? new Date().toISOString();
-      const result = await api.putSettings(
-        settingsRef.current as unknown as Record<string, unknown>,
-        iso,
-      );
-      if (epoch !== epochRef.current) return;
-      if (result?.updatedAt) {
-        settingsUpdatedAtRef.current = result.updatedAt;
-        writeSettingsMeta(result.updatedAt);
-      }
-      // The server rejected a stale write: adopt its newer copy so both sides converge
-      // instead of reporting "Synced" while holding divergent settings.
-      if (result && !result.applied && result.settings) {
-        const next = pickSettings(result.settings);
-        writeStoredSettings(next);
-        setSettings(next);
-        settingsRef.current = next;
-      }
-      const notesForPush = notesAllRef.current as ServerNote[];
-      await api.putNotes(notesForPush);
-      if (epoch !== epochRef.current) return;
-      setSync({ phase: 'synced', pending: 0, lastSyncedAt: Date.now(), error: null });
-    } catch (err) {
-      if (epoch !== epochRef.current) return;
-      if (err instanceof ApiError && err.status === 401) {
-        resetToGuest('Your session expired. Please sign in again.');
-        return;
-      }
-      setSync((s) => ({
-        phase: navigator.onLine ? 'error' : 'offline',
-        pending: s.pending + 1,
-        lastSyncedAt: s.lastSyncedAt,
-        error: err instanceof Error ? err.message : 'Sync failed',
-      }));
-    }
-  }, [resetToGuest]);
-
-  const schedulePush = useCallback(() => {
-    if (!SYNC_ENABLED || !userRef.current) return;
-    setSync((s) => ({ ...s, phase: 'syncing', pending: s.pending + 1 }));
-    if (pushTimer.current) window.clearTimeout(pushTimer.current);
-    pushTimer.current = window.setTimeout(() => {
-      void pushPending();
-    }, 800);
-  }, [pushPending]);
-
-  const syncNow = useCallback(async () => {
-    if (!SYNC_ENABLED || !userRef.current || clearingRef.current) return;
-    const epoch = epochRef.current;
-    try {
-      setSync((s) => ({ ...s, phase: 'syncing' }));
-      const server = await api.getState();
-      if (epoch !== epochRef.current) return;
-      const merged = mergeSessions(sessionsRef.current, server.sessions);
-      replaceSessions(merged);
-      setSessions(merged);
-      sessionsRef.current = merged;
-
-      if (
-        server.settings &&
-        server.settingsUpdatedAt &&
-        (!settingsUpdatedAtRef.current || server.settingsUpdatedAt > settingsUpdatedAtRef.current)
-      ) {
-        const next = pickSettings(server.settings);
-        writeStoredSettings(next);
-        settingsUpdatedAtRef.current = server.settingsUpdatedAt;
-        writeSettingsMeta(server.settingsUpdatedAt);
-        setSettings(next);
-        settingsRef.current = next;
-      }
-      // Pull notes from the server and reconcile with local (tombstone-aware LWW).
-      const serverNotes = await api.getNotes();
-      if (epoch !== epochRef.current) return;
-      commitNotes(mergeNotes(notesAllRef.current, serverNotes));
-      await pushPending();
-    } catch (err) {
-      if (epoch !== epochRef.current) return;
-      if (err instanceof ApiError && err.status === 401) {
-        resetToGuest('Your session expired. Please sign in again.');
-        return;
-      }
-      setSync((s) => ({
-        ...s,
-        phase: navigator.onLine ? 'error' : 'offline',
-        error: err instanceof Error ? err.message : 'Sync failed',
-      }));
-    }
-  }, [pushPending, resetToGuest]);
-
-  const adoptUser = useCallback(
-    async (nextUser: AuthUser) => {
-      epochRef.current += 1;
-      setStorageScope(nextUser.id);
-      writeJSON(STORAGE_KEYS.authUser, nextUser.id);
-      setAuthError(null);
-      const scopedSessions = readSessions();
-      const scopedSettings = readStoredSettings();
-      const initialSessions = scopedSessions.length ? scopedSessions : [];
-      const initialSettings = scopedSettings
-        ? { ...DEFAULT_SETTINGS, ...scopedSettings }
-        : DEFAULT_SETTINGS;
-
-      setSessions(initialSessions);
-      sessionsRef.current = initialSessions;
-      const scopedNotes = readNotes();
-      commitNotes(scopedNotes);
-      setSettings(initialSettings);
-      settingsRef.current = initialSettings;
-      settingsUpdatedAtRef.current = readSettingsMeta();
-      userRef.current = nextUser;
-      setUser(nextUser);
-      setGuestMergePending(hasGuestData());
-      await syncNow();
-    },
-    [syncNow],
-  );
 
   const handleSessionEnd = useCallback(
     (event: SessionEndEvent) => {
@@ -304,104 +152,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
           );
         }
       }
-      schedulePush();
     },
-    [schedulePush],
+    [],
   );
 
   const timer = useTimer(settings, handleSessionEnd);
 
   const notes = useMemo(() => activeNotes(notesAll), [notesAll]);
 
-  const login = useCallback(() => {
-    void api.signInWithGoogle().catch((err) => {
-      setAuthError(err instanceof Error ? err.message : 'Could not start sign-in.');
-    });
-  }, []);
-
-  const logout = useCallback(async () => {
-    try {
-      await api.signOut();
-    } catch {
-      /* ignore — reset locally regardless */
-    }
-    setAuthError(null);
-    resetToGuest();
-  }, [resetToGuest]);
-
-  const dismissAuthError = useCallback(() => setAuthError(null), []);
-
-  const mergeGuestData = useCallback(async () => {
-    const guestSessions = readGuestSessions();
-    const guestSettings = readGuestSettings();
-    const guestNotes = readGuestNotes();
-    const merged = mergeSessions(sessionsRef.current, guestSessions);
-    replaceSessions(merged);
-    setSessions(merged);
-    sessionsRef.current = merged;
-
-    // Idempotent: merging guest notes is a union by id (LWW + tombstones), then
-    // the guest copy is cleared so a second import cannot duplicate anything.
-    if (guestNotes.length) commitNotes(mergeNotes(notesAllRef.current, guestNotes));
-
-    if (guestSettings && !settingsUpdatedAtRef.current) {
-      const next = { ...DEFAULT_SETTINGS, ...guestSettings };
-      writeStoredSettings(next);
-      setSettings(next);
-      settingsRef.current = next;
-    }
-    clearGuestData();
-    setGuestMergePending(false);
-    await pushPending();
-  }, [commitNotes, pushPending]);
-
-  const dismissGuestMerge = useCallback(() => {
-    clearGuestData();
-    setGuestMergePending(false);
-  }, []);
-
-  // --- Notes ---------------------------------------------------------------
-  const createNote = useCallback((): string => {
-    const now = Date.now();
-    const note: Note = {
-      id: uid('note'),
-      title: '',
-      content: '',
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null,
-    };
-    commitNotes([...notesAllRef.current, note]);
-    schedulePush();
-    return note.id;
-  }, [commitNotes, schedulePush]);
-
-  const updateNote = useCallback((id: string, patch: { title?: string; content?: string }) => {
-    const now = Date.now();
-    const next = notesAllRef.current.map((n) =>
-      n.id === id ? { ...n, ...patch, updatedAt: now } : n,
-    );
-    commitNotes(next);
-    schedulePush();
-  }, [commitNotes, schedulePush]);
-
-  const deleteNote = useCallback((id: string) => {
-    const now = Date.now();
-    const next = notesAllRef.current.map((n) =>
-      n.id === id && n.deletedAt === null ? { ...n, deletedAt: now, updatedAt: now } : n,
-    );
-    commitNotes(next);
-    schedulePush();
-  }, [commitNotes, schedulePush]);
-
-  const restoreNote = useCallback((id: string) => {
-    const now = Date.now();
-    const next = notesAllRef.current.map((n) =>
-      n.id === id ? { ...n, deletedAt: null, updatedAt: now } : n,
-    );
-    commitNotes(next);
-    schedulePush();
-  }, [commitNotes, schedulePush]);
+  const login = useCallback(() => undefined, []);
+  const logout = useCallback(async () => undefined, []);
+  const authError = null;
+  const dismissAuthError = useCallback(() => undefined, []);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     setSettings((prev) => {
@@ -413,8 +175,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       settingsRef.current = next;
       return next;
     });
-    schedulePush();
-  }, [schedulePush]);
+  }, []);
 
   const resetSettings = useCallback(() => {
     setSettings(DEFAULT_SETTINGS);
@@ -423,42 +184,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     settingsUpdatedAtRef.current = iso;
     writeSettingsMeta(iso);
     settingsRef.current = DEFAULT_SETTINGS;
-    schedulePush();
-  }, [schedulePush]);
+  }, []);
 
-  const removeAllSessions = useCallback(() => {
-    if (pushTimer.current) window.clearTimeout(pushTimer.current);
-    const clearLocal = () => {
-      clearSessions();
-      setSessions([]);
-      sessionsRef.current = [];
-      clearingRef.current = false;
-    };
-    if (!(SYNC_ENABLED && userRef.current)) {
-      clearLocal();
-      return;
-    }
-    // Wait for the server delete before dropping local data. Blocking push/pull while
-    // clearing stops a concurrent sync from re-uploading (resurrecting) the deleted rows.
-    clearingRef.current = true;
-    void (async () => {
-      try {
-        await api.deleteSessions();
-        clearLocal();
-      } catch (err) {
-        clearingRef.current = false;
-        if (err instanceof ApiError && err.status === 401) {
-          resetToGuest('Your session expired. Please sign in again.');
-          return;
-        }
-        setSync((s) => ({
-          ...s,
-          phase: navigator.onLine ? 'error' : 'offline',
-          error: 'Could not clear cloud history. Please try again.',
-        }));
-      }
-    })();
-  }, [resetToGuest]);
+  const clearHistory = useCallback(() => {
+    clearSessions();
+    setSessions([]);
+    sessionsRef.current = [];
+  }, []);
 
   const exportHistory = useCallback(() => exportSessions(), []);
 
@@ -500,10 +232,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { ok: false, message: 'Backup is missing sessions or notes.' };
     }
 
-    const sanitizedSessions = importedSessions
-      .map((item) => sanitizeSession(item))
-      .filter((item): item is NonNullable<ReturnType<typeof sanitizeSession>> => item !== null);
-    const sanitizedNotes: Note[] = [];
+    type SanitizedSession = Session;
+    const sessionsToImport: SanitizedSession[] = [];
+    for (const item of importedSessions) {
+      if (!item || typeof item !== 'object') continue;
+      const record = item as Record<string, unknown>;
+      if (typeof record.id !== 'string' || typeof record.mode !== 'string') continue;
+      sessionsToImport.push(record as unknown as Session);
+    }
+
+    const notesToImport: Note[] = [];
     for (const item of importedNotes) {
       if (!item || typeof item !== 'object') continue;
       const row = item as Record<string, unknown>;
@@ -519,7 +257,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const rawDeleted = row.deletedAt == null ? null : Math.round(Number(row.deletedAt) || 0);
       const deletedAt = rawDeleted == null || rawDeleted <= 0 ? null : rawDeleted;
       if (deletedAt !== null && deletedAt < createdAt) continue;
-      sanitizedNotes.push({ id, title, content, createdAt, updatedAt, deletedAt });
+      notesToImport.push({ id, title, content, createdAt, updatedAt, deletedAt });
     }
 
     const hasExisting = sessionsRef.current.length > 0 || notesAllRef.current.length > 0 || readStoredSettings() !== null;
@@ -540,136 +278,113 @@ export function AppProvider({ children }: { children: ReactNode }) {
       settingsRef.current = next;
     }
 
-    const mergedSessions = mergeSessions(sessionsRef.current, sanitizedSessions as Session[]);
+    const mergedSessions = mergeSessions(sessionsRef.current, sessionsToImport);
     replaceSessions(mergedSessions);
     setSessions(mergedSessions);
     sessionsRef.current = mergedSessions;
 
-    commitNotes(mergeNotes(notesAllRef.current, sanitizedNotes));
-    await pushPending();
+    commitNotes(mergeNotes(notesAllRef.current, notesToImport));
     return { ok: true, message: 'Backup imported and saved locally.' };
-  }, [pushPending]);
-
-  // Bootstrap Supabase Auth: restore the session, react to sign-in/out and
-  // surface any OAuth error left in the URL.
-  useEffect(() => {
-    if (!SYNC_ENABLED || !supabase) return;
-    const sb = supabase;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const { data } = await sb.auth.getSession();
-        if (!cancelled && data.session?.user) {
-          const me = await api.getMe();
-          if (!cancelled && me.user) await adoptUser(me.user);
-        }
-      } catch {
-        if (!cancelled) {
-          setSync((s) => ({ ...s, phase: 'error', error: 'Could not check sign-in status' }));
-        }
-      } finally {
-        if (!cancelled) setAuthReady(true);
-      }
-    })();
-
-    const { data: sub } = sb.auth.onAuthStateChange((event, session) => {
-      // Defer so we never call other Supabase methods inside the callback.
-      setTimeout(() => {
-        void (async () => {
-          if (event === 'SIGNED_OUT') {
-            if (userRef.current) resetToGuest();
-            return;
-          }
-          if (!session?.user) return;
-          if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'USER_UPDATED') {
-            try {
-              const me = await api.getMe();
-              if (me.user && me.user.id !== userRef.current?.id) await adoptUser(me.user);
-            } catch {
-              /* transient; the periodic sync will retry */
-            }
-          }
-        })();
-      }, 0);
-    });
-
-    const redirect = parseAuthRedirect(window.location.search, window.location.hash);
-    if (redirect.status === 'error') setAuthError(authErrorMessage(redirect.reason));
-    if (hasAuthRedirect(window.location.search, window.location.hash)) {
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-
-    return () => {
-      cancelled = true;
-      sub.subscription.unsubscribe();
-    };
-  }, [adoptUser, resetToGuest]);
-
-  // Retry when connectivity returns and reconcile periodically.
-  useEffect(() => {
-    if (!SYNC_ENABLED) return;
-    const onOnline = () => void syncNow();
-    const onOffline = () => setSync((s) => ({ ...s, phase: 'offline' }));
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-    const interval = window.setInterval(() => {
-      if (document.visibilityState === 'visible' && userRef.current) void syncNow();
-    }, 60000);
-    return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
-      window.clearInterval(interval);
-      if (pushTimer.current) window.clearTimeout(pushTimer.current);
-    };
-  }, [syncNow]);
-
-  // React to changes made in other tabs.
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      // A different tab signed in as another account (or signed out). Re-bootstrap so
-      // this tab can never keep pushing the previous account's local data.
-      if (e.key === STORAGE_KEYS.authUser) {
-        if (!SYNC_ENABLED) return;
-        let nextId: string | null = null;
-        try {
-          nextId = e.newValue ? (JSON.parse(e.newValue) as string) : null;
-        } catch {
-          nextId = null;
-        }
-        if (nextId !== (userRef.current?.id ?? null)) window.location.reload();
-        return;
-      }
-      if (userRef.current) return; // scoped keys are per-user; ignore while signed in
-      if (e.key === STORAGE_KEYS.sessions) setSessions(readSessions());
-      if (e.key === STORAGE_KEYS.settings) setSettings(loadSettings());
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  // Apply the theme to <html> and mirror it for the pre-paint script.
-  useEffect(() => {
-    const root = document.documentElement;
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const apply = () => {
-      const dark = settings.theme === 'dark' || (settings.theme === 'system' && media.matches);
-      root.classList.toggle('dark', dark);
-      root.style.colorScheme = dark ? 'dark' : 'light';
+  const createNote = useCallback((): string => {
+    const now = Date.now();
+    const note: Note = {
+      id: uid('note'),
+      title: '',
+      content: '',
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
     };
-    apply();
-    writeJSON(STORAGE_KEYS.theme, settings.theme);
-    if (settings.theme === 'system') {
-      media.addEventListener('change', apply);
-      return () => media.removeEventListener('change', apply);
-    }
-    return undefined;
-  }, [settings.theme]);
+    commitNotes([...notesAllRef.current, note]);
+    return note.id;
+  }, [commitNotes]);
 
-  // Remaining time in the browser tab title.
+  const updateNote = useCallback((id: string, patch: { title?: string; content?: string }) => {
+    const now = Date.now();
+    const next = notesAllRef.current.map((n) =>
+      n.id === id ? { ...n, ...patch, updatedAt: now } : n,
+    );
+    commitNotes(next);
+  }, [commitNotes]);
+
+  const deleteNote = useCallback((id: string) => {
+    const now = Date.now();
+    const next = notesAllRef.current.map((n) =>
+      n.id === id && n.deletedAt === null ? { ...n, deletedAt: now, updatedAt: now } : n,
+    );
+    commitNotes(next);
+  }, [commitNotes]);
+
+  const restoreNote = useCallback((id: string) => {
+    const now = Date.now();
+    const next = notesAllRef.current.map((n) =>
+      n.id === id ? { ...n, deletedAt: null, updatedAt: now } : n,
+    );
+    commitNotes(next);
+  }, [commitNotes]);
+
+  const mergeGuestData = useCallback(async () => {
+    const guestSessions = readGuestSessions();
+    const guestSettings = readGuestSettings();
+    const guestNotes = readGuestNotes();
+    const merged = mergeSessions(sessionsRef.current, guestSessions);
+    replaceSessions(merged);
+    setSessions(merged);
+    sessionsRef.current = merged;
+
+    if (guestNotes.length) commitNotes(mergeNotes(notesAllRef.current, guestNotes));
+
+    if (guestSettings && !settingsUpdatedAtRef.current) {
+      const next = { ...DEFAULT_SETTINGS, ...guestSettings };
+      writeStoredSettings(next);
+      setSettings(next);
+      settingsRef.current = next;
+    }
+    clearGuestData();
+    setGuestMergePending(false);
+  }, [commitNotes]);
+
+  const dismissGuestMerge = useCallback(() => {
+    clearGuestData();
+    setGuestMergePending(false);
+  }, []);
+
+  const importAccountData = useCallback(async (scopeId: string) => {
+    setStorageScope(scopeId);
+    const scopedSessions = readSessions();
+    const scopedSettings = readStoredSettings();
+    const scopedNotes = readNotes();
+    setStorageScope(null);
+
+    const mergedSessions = mergeSessions(sessionsRef.current, scopedSessions);
+    replaceSessions(mergedSessions);
+    setSessions(mergedSessions);
+    sessionsRef.current = mergedSessions;
+
+    commitNotes(mergeNotes(notesAllRef.current, scopedNotes));
+
+    if (scopedSettings && !readStoredSettings()) {
+      const next = { ...DEFAULT_SETTINGS, ...scopedSettings };
+      writeStoredSettings(next);
+      setSettings(next);
+      settingsRef.current = next;
+    }
+
+    setAccountImportPending(false);
+  }, [commitNotes]);
+
+  const dismissAccountImport = useCallback(() => {
+    setAccountImportPending(false);
+  }, []);
+
+  const syncNow = useCallback(async () => undefined, []);
+
   useEffect(() => {
-    document.title = `${formatClock(timer.remaining)} • ${modeLabel(timer.state.mode)} — Akidoro`;
-  }, [timer.remaining, timer.state.mode]);
+    // Unused account import is only prompted if scoped data exists. Keep scopes in state.
+    setAccountScopeIds(findAccountScopes());
+  }, []);
 
   const value = useMemo<AppContextValue>(
     () => ({
@@ -677,7 +392,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateSettings,
       resetSettings,
       sessions,
-      clearHistory: removeAllSessions,
+      clearHistory,
       exportHistory,
       exportBackup,
       importBackup,
@@ -687,25 +402,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateNote,
       deleteNote,
       restoreNote,
-      user,
-      authReady,
-      googleLoginConfigured,
+      accountImportPending,
+      accountScopeIds,
+      importAccountData,
+      dismissAccountImport,
+      guestMergePending,
+      mergeGuestData,
+      dismissGuestMerge,
+      user: null,
+      authReady: true,
+      googleLoginConfigured: false,
       login,
       logout,
       authError,
       dismissAuthError,
-      sync,
+      sync: { phase: 'local', pending: 0, lastSyncedAt: null, error: null },
       syncNow,
-      guestMergePending,
-      mergeGuestData,
-      dismissGuestMerge,
     }),
     [
       settings,
       updateSettings,
       resetSettings,
       sessions,
-      removeAllSessions,
+      clearHistory,
       exportHistory,
       exportBackup,
       importBackup,
@@ -715,18 +434,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateNote,
       deleteNote,
       restoreNote,
-      user,
-      authReady,
-      googleLoginConfigured,
-      login,
-      logout,
-      authError,
-      dismissAuthError,
-      sync,
-      syncNow,
+      accountImportPending,
+      accountScopeIds,
+      importAccountData,
+      dismissAccountImport,
       guestMergePending,
       mergeGuestData,
       dismissGuestMerge,
+      authError,
+      syncNow,
     ],
   );
 
@@ -735,6 +451,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
 export function useApp(): AppContextValue {
   const ctx = useContext(AppContext);
-  if (!ctx) throw new Error('useApp must be used within an AppProvider');
+  if (!ctx) throw new Error('useApp must be within AppProvider');
   return ctx;
 }

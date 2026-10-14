@@ -1,8 +1,7 @@
 import { useApp } from '../context/AppContext';
-import { AccountMenu } from './AccountMenu';
 import { cx } from '../lib/classNames';
 
-export type View = 'timer' | 'stats' | 'notes' | 'settings' | 'admin';
+export type View = 'timer' | 'stats' | 'notes' | 'settings';
 
 const BASE_TABS: Array<{ id: View; label: string }> = [
   { id: 'timer', label: 'Timer' },
@@ -12,8 +11,8 @@ const BASE_TABS: Array<{ id: View; label: string }> = [
 ];
 
 export function Nav({ view, onChange }: { view: View; onChange: (view: View) => void }) {
-  const { settings, updateSettings, user } = useApp();
-  const tabs = user?.isAdmin ? [...BASE_TABS, { id: 'admin' as const, label: 'Admin' }] : BASE_TABS;
+  const { settings, updateSettings } = useApp();
+  const tabs = BASE_TABS;
   const isDark =
     settings.theme === 'dark' ||
     (settings.theme === 'system' &&
@@ -70,7 +69,6 @@ export function Nav({ view, onChange }: { view: View; onChange: (view: View) => 
               </svg>
             )}
           </button>
-          <AccountMenu />
         </div>
       </div>
     </header>
