@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Note, Session } from '../src/types';
 import { DEFAULT_SETTINGS } from '../src/types';
