@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { api } from '../../lib/api';
 import {
@@ -117,10 +117,13 @@ function AccountSection() {
 }
 
 export function SettingsView() {
-  const { settings, updateSettings, resetSettings, exportHistory, clearHistory, sessions, user } = useApp();
+  const { settings, updateSettings, resetSettings, exportHistory, exportBackup, importBackup, clearHistory, sessions, user } = useApp();
   const [permission, setPermission] = useState(getNotificationPermission());
   const [confirmClear, setConfirmClear] = useState(false);
   const [exported, setExported] = useState(false);
+  const [backupNotice, setBackupNotice] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const onToggleNotifications = async (value: boolean) => {
     if (!value) {
@@ -143,6 +146,30 @@ export function SettingsView() {
     URL.revokeObjectURL(url);
     setExported(true);
     window.setTimeout(() => setExported(false), 2500);
+  };
+
+  const onExportBackup = () => {
+    const json = exportBackup();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `akidoro-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const onImportBackup = async (file: File) => {
+    setImporting(true);
+    setBackupNotice(null);
+    try {
+      const text = await file.text();
+      const result = await importBackup(text);
+      setBackupNotice(result.message);
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
   };
 
   return (
@@ -269,12 +296,27 @@ export function SettingsView() {
         <p className="text-sm muted">
           {user
             ? 'Your settings and session history are saved to your Akidoro account and synced across your devices. The timer itself always runs locally, so it keeps working offline. Music plays from pasted links through the official provider embeds, so no music account is connected.'
-            : 'Guest data (settings, timer state and session history) is stored only in this browser via local storage. It is not synced across devices and never leaves your machine. Music plays from pasted links through the official provider embeds, so no music account is connected.'}
+            : 'Guest data (notes, settings, timer progress and session history) is stored only in this browser profile: it is not synced across devices and may be lost if site data is cleared. Sharing a browser profile means sharing this local data.'}
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Button onClick={onExport} disabled={sessions.length === 0}>
             Export history as JSON
           </Button>
+          <Button onClick={onExportBackup}>Export backup (JSON)</Button>
+          <Button variant="ghost" onClick={() => fileRef.current?.click()} disabled={importing}>
+            {importing ? 'Importing…' : 'Import backup'}
+          </Button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="application/json"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void onImportBackup(file);
+            }}
+          />
+          {backupNotice ? <span className="text-xs muted">{backupNotice}</span> : null}
           {exported ? <span className="text-xs text-accent-700 dark:text-accent-300">Exported</span> : null}
           {confirmClear ? (
             <>

@@ -24,7 +24,7 @@ import {
   writeSettingsMeta,
   writeStoredSettings,
 } from '../lib/storage';
-import { ApiError, api } from '../lib/api';
+import { ApiError, api, sanitizeSession } from '../lib/api';
 import type { AuthUser, ServerNote, ServerSession } from '../lib/api';
 import { authErrorMessage, hasAuthRedirect, parseAuthRedirect } from '../lib/authRedirect';
 import { supabase, supabaseConfigured } from '../lib/supabase';
@@ -56,6 +56,8 @@ interface AppContextValue {
   sessions: Session[];
   clearHistory: () => void;
   exportHistory: () => string;
+  exportBackup: () => string;
+  importBackup: (json: string) => Promise<{ ok: boolean; message: string }>;
   timer: UseTimerResult;
   // Notes
   notes: Note[];
@@ -460,6 +462,94 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const exportHistory = useCallback(() => exportSessions(), []);
 
+  const exportBackup = useCallback((): string => {
+    return JSON.stringify(
+      {
+        version: 1,
+        app: 'Akidoro',
+        exportedAt: new Date().toISOString(),
+        settings: settingsRef.current,
+        settingsUpdatedAt: settingsUpdatedAtRef.current,
+        sessions: sessionsRef.current,
+        notes: notesAllRef.current,
+      },
+      null,
+      2,
+    );
+  }, []);
+
+  const importBackup = useCallback(async (json: string): Promise<{ ok: boolean; message: string }> => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(json);
+    } catch {
+      return { ok: false, message: 'Backup file is not valid JSON.' };
+    }
+    if (!parsed || typeof parsed !== 'object') {
+      return { ok: false, message: 'Backup file is invalid.' };
+    }
+    const body = parsed as Record<string, unknown>;
+    if (body.app !== 'Akidoro' || body.version !== 1) {
+      return { ok: false, message: 'Unsupported backup format or version.' };
+    }
+    const importedSettings =
+      body.settings && typeof body.settings === 'object' ? (body.settings as Record<string, unknown>) : null;
+    const importedSessions = Array.isArray(body.sessions) ? body.sessions : null;
+    const importedNotes = Array.isArray(body.notes) ? body.notes : null;
+    if (!importedSessions || !importedNotes) {
+      return { ok: false, message: 'Backup is missing sessions or notes.' };
+    }
+
+    const sanitizedSessions = importedSessions
+      .map((item) => sanitizeSession(item))
+      .filter((item): item is NonNullable<ReturnType<typeof sanitizeSession>> => item !== null);
+    const sanitizedNotes: Note[] = [];
+    for (const item of importedNotes) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as Record<string, unknown>;
+      const id = String(row.id ?? '').slice(0, 200);
+      if (!id) continue;
+      const title = String(row.title ?? '').slice(0, 300);
+      const content = String(row.content ?? '').slice(0, 100000);
+      const createdAt = Math.round(Number(row.createdAt) || 0);
+      const updatedAt = Math.round(Number(row.updatedAt) || 0);
+      if (!Number.isFinite(createdAt) || !Number.isFinite(updatedAt) || createdAt <= 0 || updatedAt <= 0) {
+        continue;
+      }
+      const rawDeleted = row.deletedAt == null ? null : Math.round(Number(row.deletedAt) || 0);
+      const deletedAt = rawDeleted == null || rawDeleted <= 0 ? null : rawDeleted;
+      if (deletedAt !== null && deletedAt < createdAt) continue;
+      sanitizedNotes.push({ id, title, content, createdAt, updatedAt, deletedAt });
+    }
+
+    const hasExisting = sessionsRef.current.length > 0 || notesAllRef.current.length > 0 || readStoredSettings() !== null;
+    if (hasExisting) {
+      const ok = window.confirm(
+        'This backup will be merged into the current local data by id (duplicates are skipped). Continue?',
+      );
+      if (!ok) return { ok: false, message: 'Import cancelled.' };
+    }
+
+    if (importedSettings) {
+      const next = pickSettings(importedSettings);
+      writeStoredSettings(next);
+      const iso = new Date().toISOString();
+      settingsUpdatedAtRef.current = iso;
+      writeSettingsMeta(iso);
+      setSettings(next);
+      settingsRef.current = next;
+    }
+
+    const mergedSessions = mergeSessions(sessionsRef.current, sanitizedSessions as Session[]);
+    replaceSessions(mergedSessions);
+    setSessions(mergedSessions);
+    sessionsRef.current = mergedSessions;
+
+    commitNotes(mergeNotes(notesAllRef.current, sanitizedNotes));
+    await pushPending();
+    return { ok: true, message: 'Backup imported and saved locally.' };
+  }, [pushPending]);
+
   // Bootstrap Supabase Auth: restore the session, react to sign-in/out and
   // surface any OAuth error left in the URL.
   useEffect(() => {
@@ -589,6 +679,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessions,
       clearHistory: removeAllSessions,
       exportHistory,
+      exportBackup,
+      importBackup,
       timer,
       notes,
       createNote,
@@ -615,6 +707,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessions,
       removeAllSessions,
       exportHistory,
+      exportBackup,
+      importBackup,
       timer,
       notes,
       createNote,
