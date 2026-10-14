@@ -33,6 +33,8 @@ export interface Session {
   id: string;
   mode: Mode;
   label: string;
+  /** Task associated when the focus session began; optional for older data. */
+  taskId?: string | null;
   /** First moment the session started (epoch ms). */
   startedAt: number;
   /** Last moment of activity (epoch ms). */
@@ -59,6 +61,23 @@ export interface Note {
   deletedAt: number | null; // epoch ms tombstone, null = active
 }
 
+export interface Task {
+  id: string;
+  title: string;
+  completed: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SavedMusicLink {
+  id: string;
+  provider: MusicProvider;
+  name: string;
+  input: string;
+  normalizedId: string | null;
+  createdAt: number;
+}
+
 export type ThemePreference = 'light' | 'dark' | 'system';
 
 export interface Settings {
@@ -72,6 +91,7 @@ export interface Settings {
   notifications: boolean;
   soundEnabled: boolean;
   volume: number; // 0..1
+  dailyGoalMin: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -85,6 +105,7 @@ export const DEFAULT_SETTINGS: Settings = {
   notifications: false,
   soundEnabled: true,
   volume: 0.5,
+  dailyGoalMin: 120,
 };
 
 export type MusicProvider = 'youtube' | 'spotify';

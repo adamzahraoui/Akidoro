@@ -1,10 +1,13 @@
-import type { Note, Session, Settings } from '../types';
+import type { Note, SavedMusicLink, Session, Settings, Task } from '../types';
 import { idbPut, idbRemove } from './idb';
 
 export const STORAGE_KEYS = {
   settings: 'akidoro.settings.v1',
   sessions: 'akidoro.sessions.v1',
   notes: 'akidoro.notes.v1',
+  tasks: 'akidoro.tasks.v1',
+  currentTask: 'akidoro.currentTask.v1',
+  savedMusic: 'akidoro.savedMusic.v1',
   timer: 'akidoro.timer.v1',
   // Mirror of just the theme, read by the inline pre-paint script in index.html.
   theme: 'akidoro.theme.v1',
@@ -155,6 +158,43 @@ export function writeNotes(notes: Note[]): void {
 export function readGuestNotes(): Note[] {
   const notes = readJSON<Note[]>(STORAGE_KEYS.notes, []);
   return Array.isArray(notes) ? notes : [];
+}
+
+// --- Tasks --------------------------------------------------------------------
+function tasksKey(): string {
+  return scoped(STORAGE_KEYS.tasks);
+}
+
+export function readTasks(): Task[] {
+  const tasks = readJSON<Task[]>(tasksKey(), []);
+  return Array.isArray(tasks) ? tasks : [];
+}
+
+export function writeTasks(tasks: Task[]): void {
+  writeJSON(tasksKey(), tasks);
+}
+
+export function readCurrentTaskId(): string | null {
+  const value = readJSON<unknown>(scoped(STORAGE_KEYS.currentTask), null);
+  return typeof value === 'string' ? value : null;
+}
+
+export function writeCurrentTaskId(id: string | null): void {
+  writeJSON(scoped(STORAGE_KEYS.currentTask), id);
+}
+
+// --- Saved music links ---------------------------------------------------------
+function savedMusicKey(): string {
+  return scoped(STORAGE_KEYS.savedMusic);
+}
+
+export function readSavedMusic(): SavedMusicLink[] {
+  const items = readJSON<SavedMusicLink[]>(savedMusicKey(), []);
+  return Array.isArray(items) ? items : [];
+}
+
+export function writeSavedMusic(items: SavedMusicLink[]): void {
+  writeJSON(savedMusicKey(), items);
 }
 
 // --- Sessions -----------------------------------------------------------------

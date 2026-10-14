@@ -7,6 +7,9 @@ import type { Mode } from '../../types';
 import { Button } from '../ui/Button';
 import { CircularProgress } from './CircularProgress';
 import { MusicPanel } from '../music/MusicPanel';
+import { TaskList } from './TaskList';
+import { TodayProgress } from './TodayProgress';
+import { QuickNotePanel } from './QuickNotePanel';
 import { cx } from '../../lib/classNames';
 
 const MODES: Array<{ id: Mode; label: string }> = [
@@ -52,6 +55,7 @@ export function TimerView() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="space-y-6">
       <section className="card flex flex-col items-center px-5 py-8 sm:px-8" aria-labelledby="timer-heading">
         <h1 id="timer-heading" className="sr-only">
           Pomodoro timer
@@ -146,7 +150,14 @@ export function TimerView() {
         </p>
       </section>
 
-      <MusicPanel />
+        <TodayProgress />
+        <QuickNotePanel onOpenInNotes={() => window.dispatchEvent(new CustomEvent('akidoro:navigate', { detail: 'notes' }))} />
+      </div>
+
+      <div className="space-y-6">
+        <MusicPanel />
+        <TaskList />
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Nav } from './components/Nav';
 import type { View } from './components/Nav';
 import { TimerView } from './components/timer/TimerView';
@@ -41,6 +41,16 @@ function GuestMergeBanner() {
 export default function App() {
   const [view, setView] = useState<View>('timer');
   const { accountImportPending, accountScopeIds, importAccountData, dismissAccountImport } = useApp();
+  useEffect(() => {
+    const onNavigate = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (detail === 'notes' || detail === 'timer' || detail === 'stats' || detail === 'settings') {
+        setView(detail as View);
+      }
+    };
+    window.addEventListener('akidoro:navigate', onNavigate);
+    return () => window.removeEventListener('akidoro:navigate', onNavigate);
+  }, []);
 
   return (
     <div className="min-h-full">

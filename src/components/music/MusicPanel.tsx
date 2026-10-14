@@ -8,7 +8,7 @@ export function MusicPanel() {
   const [provider, setProvider] = useState<MusicProvider>('youtube');
 
   return (
-    <aside className="card flex flex-col p-5" aria-labelledby="music-heading">
+    <aside className="card p-5" aria-labelledby="music-heading">
       <div className="mb-3 flex items-center justify-between">
         <h2 id="music-heading" className="text-sm font-semibold uppercase tracking-wide text-stone-500 dark:text-stone-400">
           Music
@@ -38,7 +38,7 @@ export function MusicPanel() {
         </div>
       </div>
 
-      <div className="flex-1">
+      <div>
         {provider === 'youtube' ? <YouTubePanel /> : <SpotifyPanel />}
       </div>
 

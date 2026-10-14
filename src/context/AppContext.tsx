@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { DEFAULT_SETTINGS } from '../types';
-import type { Note, Session, Settings } from '../types';
+import type { Note, SavedMusicLink, Session, Settings, Task } from '../types';
 import {
   STORAGE_KEYS,
   appendSession,
@@ -15,11 +15,17 @@ import {
   readNotes,
   readSessions,
   readSettingsMeta,
+  readCurrentTaskId,
+  readSavedMusic,
   readStoredSettings,
+  readTasks,
   replaceSessions,
   setStorageScope,
   writeNotes,
+  writeCurrentTaskId,
+  writeSavedMusic,
   writeSettingsMeta,
+  writeTasks,
   writeStoredSettings,
   writeJSON,
 } from '../lib/storage';
@@ -54,6 +60,17 @@ interface AppContextValue {
   updateNote: (id: string, patch: { title?: string; content?: string }) => void;
   deleteNote: (id: string) => void;
   restoreNote: (id: string) => void;
+  tasks: import('../types').Task[];
+  createTask: (title: string) => string;
+  renameTask: (id: string, title: string) => void;
+  toggleTask: (id: string) => void;
+  deleteTask: (id: string) => void;
+  currentTaskId: string | null;
+  selectTask: (id: string | null) => void;
+  savedMusic: import('../types').SavedMusicLink[];
+  addSavedMusic: (link: Omit<import('../types').SavedMusicLink,'id'|'createdAt'>) => string;
+  renameSavedMusic: (id: string, name: string) => void;
+  deleteSavedMusic: (id: string) => void;
   accountImportPending: boolean;
   accountScopeIds: string[];
   importAccountData: (scopeId: string) => Promise<void>;
@@ -123,8 +140,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   sessionsRef.current = sessions;
 
   const [notesAll, setNotesAll] = useState<Note[]>(readNotes);
+  const [tasks, setTasks] = useState<Task[]>(readTasks);
+  const [currentTaskId, setCurrentTaskId] = useState<string | null>(readCurrentTaskId());
+  const [savedMusic, setSavedMusic] = useState<SavedMusicLink[]>(readSavedMusic());
   const notesAllRef = useRef(notesAll);
   notesAllRef.current = notesAll;
+  const tasksRef = useRef(tasks);
+  tasksRef.current = tasks;
+  const currentTaskIdRef = useRef(currentTaskId);
+  currentTaskIdRef.current = currentTaskId;
+  const savedMusicRef = useRef(savedMusic);
+  savedMusicRef.current = savedMusic;
 
   const [accountScopeIds, setAccountScopeIds] = useState<string[]>(findAccountScopes());
   const [accountImportPending, setAccountImportPending] = useState(accountScopeIds.length > 0);
@@ -136,9 +162,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notesAllRef.current = next;
   }, []);
 
+  const commitTasks = useCallback((next: Task[]) => {
+    writeTasks(next);
+    setTasks(next);
+    tasksRef.current = next;
+  }, []);
+
+  const commitSavedMusic = useCallback((next: SavedMusicLink[]) => {
+    writeSavedMusic(next);
+    setSavedMusic(next);
+    savedMusicRef.current = next;
+  }, []);
+
   const handleSessionEnd = useCallback(
     (event: SessionEndEvent) => {
-      setSessions(appendSession(event.session));
+      const sessionWithTask = { ...event.session, taskId: event.session.taskId ?? currentTaskIdRef.current };
+      setSessions(appendSession(sessionWithTask));
       const config = settingsRef.current;
       if (!event.recovered && event.session.completed) {
         const isFocus = event.session.mode === 'focus';
@@ -205,6 +244,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         settingsUpdatedAt: settingsUpdatedAtRef.current,
         sessions: sessionsRef.current,
         notes: notesAllRef.current,
+        tasks: tasksRef.current,
+        savedMusic: savedMusicRef.current,
       },
       null,
       2,
@@ -229,6 +270,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       body.settings && typeof body.settings === 'object' ? (body.settings as Record<string, unknown>) : null;
     const importedSessions = Array.isArray(body.sessions) ? body.sessions : null;
     const importedNotes = Array.isArray(body.notes) ? body.notes : null;
+    const importedTasks = Array.isArray(body.tasks) ? body.tasks : [];
+    const importedMusic = Array.isArray(body.savedMusic) ? body.savedMusic : [];
     if (!importedSessions || !importedNotes) {
       return { ok: false, message: 'Backup is missing sessions or notes.' };
     }
@@ -285,6 +328,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sessionsRef.current = mergedSessions;
 
     commitNotes(mergeNotes(notesAllRef.current, notesToImport));
+
+    const sanitizedTasks: Task[] = [];
+    for (const item of importedTasks) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as Record<string, unknown>;
+      const id = String(row.id ?? '').slice(0, 200);
+      if (!id) continue;
+      const title = String(row.title ?? '').slice(0, 200);
+      const createdAt = Math.round(Number(row.createdAt) || 0);
+      const updatedAt = Math.round(Number(row.updatedAt) || 0);
+      if (createdAt <= 0 || updatedAt <= 0) continue;
+      sanitizedTasks.push({ id, title, completed: Boolean(row.completed), createdAt, updatedAt });
+    }
+    const taskMap = new Map(tasksRef.current.map((t) => [t.id, t]));
+    for (const task of sanitizedTasks) if (!taskMap.has(task.id)) taskMap.set(task.id, task);
+    commitTasks([...taskMap.values()]);
+
+    const sanitizedMusic: SavedMusicLink[] = [];
+    for (const item of importedMusic) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as Record<string, unknown>;
+      const id = String(row.id ?? '').slice(0, 200);
+      const provider = row.provider === 'youtube' || row.provider === 'spotify' ? row.provider : null;
+      if (!id || !provider) continue;
+      const name = String(row.name ?? '').slice(0, 200);
+      const input = String(row.input ?? '').slice(0, 2000);
+      sanitizedMusic.push({ id, provider, name, input, normalizedId: row.normalizedId == null ? null : String(row.normalizedId), createdAt: Math.round(Number(row.createdAt) || Date.now()) });
+    }
+    const musicMap = new Map(savedMusicRef.current.map((m) => [m.id, m]));
+    for (const item of sanitizedMusic) if (!musicMap.has(item.id)) musicMap.set(item.id, item);
+    commitSavedMusic([...musicMap.values()]);
     return { ok: true, message: 'Backup imported and saved locally.' };
   }, []);
 
@@ -325,6 +399,58 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
     commitNotes(next);
   }, [commitNotes]);
+
+  const createTask = useCallback((title: string): string => {
+    const now = Date.now();
+    const task: Task = { id: uid('task'), title: title.trim(), completed: false, createdAt: now, updatedAt: now };
+    commitTasks([...tasksRef.current, task]);
+    return task.id;
+  }, [commitTasks]);
+
+  const renameTask = useCallback((id: string, title: string) => {
+    const next = tasksRef.current.map((t) => (t.id === id ? { ...t, title, updatedAt: Date.now() } : t));
+    commitTasks(next);
+  }, [commitTasks]);
+
+  const toggleTask = useCallback((id: string) => {
+    const next = tasksRef.current.map((t) => (t.id === id ? { ...t, completed: !t.completed, updatedAt: Date.now() } : t));
+    commitTasks(next);
+  }, [commitTasks]);
+
+  const deleteTask = useCallback((id: string) => {
+    commitTasks(tasksRef.current.filter((t) => t.id !== id));
+    if (currentTaskIdRef.current === id) {
+      setCurrentTaskId(null);
+      writeCurrentTaskId(null);
+    }
+  }, [commitTasks]);
+
+  const selectTask = useCallback((id: string | null) => {
+    setCurrentTaskId(id);
+    writeCurrentTaskId(id);
+    if (id) {
+      const task = tasksRef.current.find((t) => t.id === id);
+      if (task) {
+        const s = timer.state;
+        if (s.status === 'idle' && s.segments.length === 0) timer.controls.setLabel(task.title);
+      }
+    }
+  }, [timer]);
+
+  const addSavedMusic = useCallback((link: Omit<SavedMusicLink, 'id' | 'createdAt'>): string => {
+    const id = uid('music');
+    const item: SavedMusicLink = { ...link, id, createdAt: Date.now() };
+    commitSavedMusic([...savedMusicRef.current, item]);
+    return id;
+  }, [commitSavedMusic]);
+
+  const renameSavedMusic = useCallback((id: string, name: string) => {
+    commitSavedMusic(savedMusicRef.current.map((m) => (m.id === id ? { ...m, name } : m)));
+  }, [commitSavedMusic]);
+
+  const deleteSavedMusic = useCallback((id: string) => {
+    commitSavedMusic(savedMusicRef.current.filter((m) => m.id !== id));
+  }, [commitSavedMusic]);
 
   const mergeGuestData = useCallback(async () => {
     const guestSessions = readGuestSessions();
@@ -419,6 +545,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       importBackup,
       timer,
       notes,
+      tasks,
+      createTask,
+      renameTask,
+      toggleTask,
+      deleteTask,
+      currentTaskId,
+      selectTask,
+      savedMusic,
+      addSavedMusic,
+      renameSavedMusic,
+      deleteSavedMusic,
       createNote,
       updateNote,
       deleteNote,
@@ -451,6 +588,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       importBackup,
       timer,
       notes,
+      tasks,
+      createTask,
+      renameTask,
+      toggleTask,
+      deleteTask,
+      currentTaskId,
+      selectTask,
+      savedMusic,
+      addSavedMusic,
+      renameSavedMusic,
+      deleteSavedMusic,
       createNote,
       updateNote,
       deleteNote,
