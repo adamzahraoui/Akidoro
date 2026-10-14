@@ -21,6 +21,7 @@ import {
   writeNotes,
   writeSettingsMeta,
   writeStoredSettings,
+  writeJSON,
 } from '../lib/storage';
 import { mergeSessions } from '../lib/merge';
 import { activeNotes, mergeNotes } from '../lib/notesMerge';
@@ -385,6 +386,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Unused account import is only prompted if scoped data exists. Keep scopes in state.
     setAccountScopeIds(findAccountScopes());
   }, []);
+
+  // Apply the theme to <html> and mirror it for the pre-paint script.
+  useEffect(() => {
+    const root = document.documentElement;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const apply = () => {
+      const dark =
+        settings.theme === 'dark' ||
+        (settings.theme === 'system' && media.matches);
+      root.classList.toggle('dark', dark);
+      root.style.colorScheme = dark ? 'dark' : 'light';
+    };
+    apply();
+    writeJSON(STORAGE_KEYS.theme, settings.theme);
+    if (settings.theme === 'system') {
+      media.addEventListener('change', apply);
+      return () => media.removeEventListener('change', apply);
+    }
+    return undefined;
+  }, [settings.theme]);
 
   const value = useMemo<AppContextValue>(
     () => ({
