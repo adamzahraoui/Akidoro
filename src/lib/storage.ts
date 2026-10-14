@@ -1,4 +1,5 @@
 import type { Note, Session, Settings } from '../types';
+import { idbPut, idbRemove } from './idb';
 
 export const STORAGE_KEYS = {
   settings: 'akidoro.settings.v1',
@@ -40,6 +41,19 @@ export function migrateLegacyStorage(): void {
 }
 
 migrateLegacyStorage();
+
+// Mirror whatever local data already exists to IndexedDB once, without deleting it.
+void (function mirrorToIndexedDb() {
+  if (typeof localStorage === 'undefined' || typeof indexedDB === 'undefined') return;
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key) idbPut(key, localStorage.getItem(key));
+    }
+  } catch {
+    /* best effort */
+  }
+})();
 
 /**
  * Signed-in users get their own localStorage namespace so that two accounts on the
@@ -83,12 +97,17 @@ export function readJSON<T>(key: string, fallback: T): T {
 }
 
 export function writeJSON(key: string, value: unknown): void {
-  if (typeof localStorage === 'undefined') return;
+  if (typeof localStorage === 'undefined') {
+    idbPut(key, value);
+    return;
+  }
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {
-    // Storage can be full or disabled (private mode). Fail silently.
+    /* storage can be full or disabled (private mode). Fail visible at call site if needed. */
   }
+  // Durable mirror: best-effort, never blocks the synchronous API.
+  idbPut(key, value);
 }
 
 export function removeKey(key: string): void {
@@ -98,6 +117,7 @@ export function removeKey(key: string): void {
   } catch {
     /* ignore */
   }
+  idbRemove(key);
 }
 
 // --- Settings -----------------------------------------------------------------
