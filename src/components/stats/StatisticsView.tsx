@@ -37,7 +37,7 @@ function DailyChart({ week }: { week: WeekStats }) {
             <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
               <div className="flex h-40 w-full items-end justify-center gap-1">
                 <div
-                  className="w-3 rounded-t bg-accent-500 sm:w-4"
+                  className="w-3 rounded-t bg-accent-600 sm:w-4"
                   style={{ height: `${focusPct}%` }}
                   title={`Focus ${formatDuration(d.focusSec)}`}
                 />
@@ -54,7 +54,7 @@ function DailyChart({ week }: { week: WeekStats }) {
       </div>
       <div className="mt-3 flex items-center justify-center gap-4 text-xs muted">
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-accent-500" /> Focus
+          <span className="h-2.5 w-2.5 rounded-sm bg-accent-600" /> Focus
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 rounded-sm bg-stone-400 dark:bg-stone-500" /> Break

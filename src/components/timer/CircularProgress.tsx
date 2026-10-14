@@ -36,7 +36,7 @@ export function CircularProgress({
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          className="stroke-accent-500 transition-[stroke-dashoffset] duration-500 ease-linear"
+          className="stroke-accent-600 transition-[stroke-dashoffset] duration-500 ease-linear"
         />
       </svg>
       <div className="absolute inset-0 grid place-items-center px-6">{children}</div>

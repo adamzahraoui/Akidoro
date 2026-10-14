@@ -109,7 +109,7 @@ export function NotesView() {
                     className={cx(
                       'focus-ring w-full rounded-xl border p-3 text-left transition-colors',
                       active
-                        ? 'border-accent-500 bg-accent-50 dark:border-accent-500 dark:bg-accent-900/20'
+                        ? 'border-accent-600 bg-accent-50 dark:border-accent-600 dark:bg-accent-900/20'
                         : 'subtle-border hover:bg-stone-100 dark:hover:bg-stone-800/60',
                     )}
                   >

@@ -42,9 +42,9 @@ body {
 
 /* Focus ring used across interactive elements. */
 .focus-ring:focus-visible {
-  @apply outline-none ring-2 ring-accent-500 ring-offset-2 ring-offset-canvas-light dark:ring-offset-canvas-dark;
+  @apply outline-none ring-2 ring-accent-600 ring-offset-2 ring-offset-canvas-light dark:ring-offset-canvas-dark;
 }
 
 input[type='range'] {
-  @apply h-1.5 w-full cursor-pointer appearance-none rounded-full bg-stone-300 accent-accent-500 dark:bg-stone-600;
+  @apply h-1.5 w-full cursor-pointer appearance-none rounded-full bg-stone-300 accent-accent-600 dark:bg-stone-600;
 }

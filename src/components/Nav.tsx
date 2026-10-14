@@ -23,9 +23,24 @@ export function Nav({ view, onChange }: { view: View; onChange: (view: View) => 
     <header className="border-b subtle-border">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-xl bg-accent-600 text-sm font-bold text-white">
-            A
-          </span>
+          <svg
+            className="h-8 w-8 shrink-0"
+            viewBox="0 0 64 64"
+            role="img"
+            aria-label="Akidoro timer logo"
+          >
+            <circle cx="32" cy="32" r="28" fill="#dc2626" />
+            <circle cx="32" cy="32" r="19" fill="none" stroke="#fffdf8" stroke-width="4" />
+            <path
+              d="M24 43 L32 22 L40 43 M27 34 H37"
+              fill="none"
+              stroke="#fffdf8"
+              stroke-width="4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <line x1="32" y1="31" x2="32" y2="21" stroke="#fffdf8" stroke-width="4" stroke-linecap="round" />
+          </svg>
           <span className="text-base font-semibold tracking-tight">Akidoro</span>
         </div>
 
@@ -42,7 +57,7 @@ export function Nav({ view, onChange }: { view: View; onChange: (view: View) => 
               className={cx(
                 'focus-ring rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
                 view === tab.id
-                  ? 'bg-surface-light text-stone-900 shadow-sm dark:bg-surface-dark dark:text-white'
+                  ? 'bg-accent-50 text-accent-700 shadow-sm dark:bg-accent-900/30 dark:text-accent-300'
                   : 'text-stone-600 hover:text-stone-900 dark:text-stone-300 dark:hover:text-white',
               )}
             >
@@ -52,6 +67,18 @@ export function Nav({ view, onChange }: { view: View; onChange: (view: View) => 
         </nav>
 
         <div className="flex items-center gap-2">
+          <a
+            href="https://github.com/adamzahraoui/Akidoro"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Star Akidoro on GitHub"
+            className="focus-ring inline-flex items-center gap-1.5 rounded-xl border subtle-border px-2.5 py-2 text-sm font-medium text-stone-600 hover:bg-stone-200/60 dark:text-stone-300 dark:hover:bg-stone-800/60"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 .587l3.668 7.431 8.2 1.193-5.934 5.787 1.401 8.168L12 18.896l-7.335 3.858 1.401-8.168L.132 9.211l8.2-1.193L12 .587z" />
+            </svg>
+            <span className="hidden sm:inline">Star on GitHub</span>
+          </a>
           <button
             type="button"
             onClick={() => updateSettings({ theme: isDark ? 'light' : 'dark' })}
