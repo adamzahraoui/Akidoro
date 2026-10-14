@@ -2,11 +2,12 @@ import { useApp } from '../context/AppContext';
 import { AccountMenu } from './AccountMenu';
 import { cx } from '../lib/classNames';
 
-export type View = 'timer' | 'stats' | 'settings' | 'admin';
+export type View = 'timer' | 'stats' | 'notes' | 'settings' | 'admin';
 
 const BASE_TABS: Array<{ id: View; label: string }> = [
   { id: 'timer', label: 'Timer' },
   { id: 'stats', label: 'Statistics' },
+  { id: 'notes', label: 'Notes' },
   { id: 'settings', label: 'Settings' },
 ];
 

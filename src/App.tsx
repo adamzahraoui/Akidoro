@@ -3,6 +3,7 @@ import { Nav } from './components/Nav';
 import type { View } from './components/Nav';
 import { TimerView } from './components/timer/TimerView';
 import { StatisticsView } from './components/stats/StatisticsView';
+import { NotesView } from './components/notes/NotesView';
 import { SettingsView } from './components/settings/SettingsView';
 import { AdminView } from './components/admin/AdminView';
 import { useApp } from './context/AppContext';
@@ -14,8 +15,8 @@ function GuestMergeBanner() {
     <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
       <div className="card flex flex-wrap items-center justify-between gap-3 p-4">
         <p className="text-sm">
-          You have guest session history saved in this browser. Merge it into your account so it
-          syncs across devices?
+          You have guest session history and notes saved in this browser. Merge them into your
+          account so they sync across devices?
         </p>
         <div className="flex items-center gap-2">
           <button
@@ -76,6 +77,9 @@ export default function App() {
         </div>
         <div hidden={view !== 'stats'}>
           <StatisticsView />
+        </div>
+        <div hidden={view !== 'notes'}>
+          <NotesView />
         </div>
         <div hidden={view !== 'settings'}>
           <SettingsView />

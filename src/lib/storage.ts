@@ -1,8 +1,9 @@
-import type { Session, Settings } from '../types';
+import type { Note, Session, Settings } from '../types';
 
 export const STORAGE_KEYS = {
   settings: 'akidoro.settings.v1',
   sessions: 'akidoro.sessions.v1',
+  notes: 'akidoro.notes.v1',
   timer: 'akidoro.timer.v1',
   // Mirror of just the theme, read by the inline pre-paint script in index.html.
   theme: 'akidoro.theme.v1',
@@ -117,6 +118,25 @@ export function writeSettingsMeta(updatedAt: string): void {
   writeJSON(settingsMetaKey(), { updatedAt });
 }
 
+// --- Notes --------------------------------------------------------------------
+function notesKey(): string {
+  return scoped(STORAGE_KEYS.notes);
+}
+
+export function readNotes(): Note[] {
+  const notes = readJSON<Note[]>(notesKey(), []);
+  return Array.isArray(notes) ? notes : [];
+}
+
+export function writeNotes(notes: Note[]): void {
+  writeJSON(notesKey(), notes);
+}
+
+export function readGuestNotes(): Note[] {
+  const notes = readJSON<Note[]>(STORAGE_KEYS.notes, []);
+  return Array.isArray(notes) ? notes : [];
+}
+
 // --- Sessions -----------------------------------------------------------------
 export function readSessions(): Session[] {
   const sessions = readJSON<Session[]>(sessionsKey(), []);
@@ -158,8 +178,9 @@ export function clearSessions(): void {
 export function hasGuestData(): boolean {
   if (typeof localStorage === 'undefined') return false;
   const hasSessions = readJSON<Session[]>(STORAGE_KEYS.sessions, []).length > 0;
+  const hasNotes = readJSON<Note[]>(STORAGE_KEYS.notes, []).length > 0;
   const hasSettings = localStorage.getItem(STORAGE_KEYS.settings) != null;
-  return hasSessions || hasSettings;
+  return hasSessions || hasSettings || hasNotes;
 }
 
 /** Remove the guest-scoped keys after migration (or dismissal). */
@@ -167,6 +188,7 @@ export function clearGuestData(): void {
   removeKey(STORAGE_KEYS.sessions);
   removeKey(STORAGE_KEYS.settings);
   removeKey(`${STORAGE_KEYS.settings}.meta`);
+  removeKey(STORAGE_KEYS.notes);
 }
 
 export function readGuestSessions(): Session[] {

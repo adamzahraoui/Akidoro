@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { DEFAULT_SETTINGS } from '../types';
-import type { Session, Settings } from '../types';
+import type { Note, Session, Settings } from '../types';
 import {
   STORAGE_KEYS,
   appendSession,
@@ -9,8 +9,10 @@ import {
   clearSessions,
   exportSessions,
   hasGuestData,
+  readGuestNotes,
   readGuestSessions,
   readGuestSettings,
+  readNotes,
   readSessions,
   readSettingsMeta,
   readStoredSettings,
@@ -18,14 +20,17 @@ import {
   replaceSessions,
   setStorageScope,
   writeJSON,
+  writeNotes,
   writeSettingsMeta,
   writeStoredSettings,
 } from '../lib/storage';
 import { ApiError, api } from '../lib/api';
-import type { AuthUser, ServerSession } from '../lib/api';
+import type { AuthUser, ServerNote, ServerSession } from '../lib/api';
 import { authErrorMessage, hasAuthRedirect, parseAuthRedirect } from '../lib/authRedirect';
 import { supabase, supabaseConfigured } from '../lib/supabase';
 import { mergeSessions } from '../lib/merge';
+import { activeNotes, mergeNotes } from '../lib/notesMerge';
+import { uid } from '../lib/id';
 import { useTimer } from '../timer/useTimer';
 import type { SessionEndEvent, UseTimerResult } from '../timer/useTimer';
 import { playCompletionChime } from '../lib/sound';
@@ -52,6 +57,12 @@ interface AppContextValue {
   clearHistory: () => void;
   exportHistory: () => string;
   timer: UseTimerResult;
+  // Notes
+  notes: Note[];
+  createNote: () => string;
+  updateNote: (id: string, patch: { title?: string; content?: string }) => void;
+  deleteNote: (id: string) => void;
+  restoreNote: (id: string) => void;
   // Accounts & cloud sync
   user: AuthUser | null;
   authReady: boolean;
@@ -105,6 +116,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
 
+  // All note records including soft-delete tombstones; the UI sees activeNotes().
+  const [notesAll, setNotesAll] = useState<Note[]>(readNotes);
+  const notesAllRef = useRef(notesAll);
+  notesAllRef.current = notesAll;
+
   const [user, setUser] = useState<AuthUser | null>(null);
   const userRef = useRef<AuthUser | null>(null);
   const [authReady, setAuthReady] = useState(!SYNC_ENABLED);
@@ -118,6 +134,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // account can never mutate state belonging to the next one.
   const epochRef = useRef(0);
 
+  /** Persist + publish the full note set (incl. tombstones). */
+  const commitNotes = useCallback((next: Note[]) => {
+    writeNotes(next);
+    setNotesAll(next);
+    notesAllRef.current = next;
+  }, []);
+
   /** Drop the signed-in identity and fall back to guest-scoped local data. */
   const resetToGuest = useCallback((message: string | null = null) => {
     epochRef.current += 1;
@@ -129,13 +152,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const nextSessions = readSessions();
     setSessions(nextSessions);
     sessionsRef.current = nextSessions;
+    commitNotes(readNotes());
     const nextSettings = loadSettings();
     setSettings(nextSettings);
     settingsRef.current = nextSettings;
     settingsUpdatedAtRef.current = readSettingsMeta();
     setSync(initialSync());
     if (message) setAuthError(message);
-  }, []);
+  }, [commitNotes]);
 
   const pushPending = useCallback(async () => {
     if (!SYNC_ENABLED || !userRef.current || clearingRef.current) return;
@@ -162,6 +186,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSettings(next);
         settingsRef.current = next;
       }
+      const notesForPush = notesAllRef.current as ServerNote[];
+      await api.putNotes(notesForPush);
+      if (epoch !== epochRef.current) return;
       setSync({ phase: 'synced', pending: 0, lastSyncedAt: Date.now(), error: null });
     } catch (err) {
       if (epoch !== epochRef.current) return;
@@ -211,6 +238,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSettings(next);
         settingsRef.current = next;
       }
+      // Pull notes from the server and reconcile with local (tombstone-aware LWW).
+      const serverNotes = await api.getNotes();
+      if (epoch !== epochRef.current) return;
+      commitNotes(mergeNotes(notesAllRef.current, serverNotes));
       await pushPending();
     } catch (err) {
       if (epoch !== epochRef.current) return;
@@ -241,6 +272,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       setSessions(initialSessions);
       sessionsRef.current = initialSessions;
+      const scopedNotes = readNotes();
+      commitNotes(scopedNotes);
       setSettings(initialSettings);
       settingsRef.current = initialSettings;
       settingsUpdatedAtRef.current = readSettingsMeta();
@@ -276,6 +309,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const timer = useTimer(settings, handleSessionEnd);
 
+  const notes = useMemo(() => activeNotes(notesAll), [notesAll]);
+
   const login = useCallback(() => {
     void api.signInWithGoogle().catch((err) => {
       setAuthError(err instanceof Error ? err.message : 'Could not start sign-in.');
@@ -297,10 +332,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const mergeGuestData = useCallback(async () => {
     const guestSessions = readGuestSessions();
     const guestSettings = readGuestSettings();
+    const guestNotes = readGuestNotes();
     const merged = mergeSessions(sessionsRef.current, guestSessions);
     replaceSessions(merged);
     setSessions(merged);
     sessionsRef.current = merged;
+
+    // Idempotent: merging guest notes is a union by id (LWW + tombstones), then
+    // the guest copy is cleared so a second import cannot duplicate anything.
+    if (guestNotes.length) commitNotes(mergeNotes(notesAllRef.current, guestNotes));
 
     if (guestSettings && !settingsUpdatedAtRef.current) {
       const next = { ...DEFAULT_SETTINGS, ...guestSettings };
@@ -311,12 +351,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
     clearGuestData();
     setGuestMergePending(false);
     await pushPending();
-  }, [pushPending]);
+  }, [commitNotes, pushPending]);
 
   const dismissGuestMerge = useCallback(() => {
     clearGuestData();
     setGuestMergePending(false);
   }, []);
+
+  // --- Notes ---------------------------------------------------------------
+  const createNote = useCallback((): string => {
+    const now = Date.now();
+    const note: Note = {
+      id: uid('note'),
+      title: '',
+      content: '',
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null,
+    };
+    commitNotes([...notesAllRef.current, note]);
+    schedulePush();
+    return note.id;
+  }, [commitNotes, schedulePush]);
+
+  const updateNote = useCallback((id: string, patch: { title?: string; content?: string }) => {
+    const now = Date.now();
+    const next = notesAllRef.current.map((n) =>
+      n.id === id ? { ...n, ...patch, updatedAt: now } : n,
+    );
+    commitNotes(next);
+    schedulePush();
+  }, [commitNotes, schedulePush]);
+
+  const deleteNote = useCallback((id: string) => {
+    const now = Date.now();
+    const next = notesAllRef.current.map((n) =>
+      n.id === id && n.deletedAt === null ? { ...n, deletedAt: now, updatedAt: now } : n,
+    );
+    commitNotes(next);
+    schedulePush();
+  }, [commitNotes, schedulePush]);
+
+  const restoreNote = useCallback((id: string) => {
+    const now = Date.now();
+    const next = notesAllRef.current.map((n) =>
+      n.id === id ? { ...n, deletedAt: null, updatedAt: now } : n,
+    );
+    commitNotes(next);
+    schedulePush();
+  }, [commitNotes, schedulePush]);
 
   const updateSettings = useCallback((patch: Partial<Settings>) => {
     setSettings((prev) => {
@@ -507,6 +590,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       clearHistory: removeAllSessions,
       exportHistory,
       timer,
+      notes,
+      createNote,
+      updateNote,
+      deleteNote,
+      restoreNote,
       user,
       authReady,
       googleLoginConfigured,
@@ -528,6 +616,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       removeAllSessions,
       exportHistory,
       timer,
+      notes,
+      createNote,
+      updateNote,
+      deleteNote,
+      restoreNote,
       user,
       authReady,
       googleLoginConfigured,

@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { Session } from '../src/types';
+import type { Note, Session } from '../src/types';
 import { DEFAULT_SETTINGS } from '../src/types';
 import {
   appendSession,
+  clearGuestData,
   hasGuestData,
+  readNotes,
   readSessions,
   readStoredSettings,
   setStorageScope,
+  writeNotes,
   writeStoredSettings,
 } from '../src/lib/storage';
 
@@ -20,6 +23,15 @@ const session = (id: string): Session => ({
   durationSec: 600,
   completed: true,
   segments: [{ start: 1000, end: 1600 }],
+});
+
+const note = (id: string): Note => ({
+  id,
+  title: `Title ${id}`,
+  content: `Content ${id}`,
+  createdAt: 1000,
+  updatedAt: 1000,
+  deletedAt: null,
 });
 
 beforeEach(() => {
@@ -60,5 +72,42 @@ describe('per-account storage isolation', () => {
 
     setStorageScope(null);
     expect(readStoredSettings()?.focusMin).toBe(25);
+  });
+});
+
+describe('guest data detection and clearing', () => {
+  it('treats guest notes as guest data and clears them with the rest', () => {
+    expect(hasGuestData()).toBe(false);
+    writeNotes([note('g1')]);
+    expect(hasGuestData()).toBe(true);
+    clearGuestData();
+    expect(hasGuestData()).toBe(false);
+  });
+
+  it('never counts an account-scoped note as guest data', () => {
+    setStorageScope('user-a');
+    writeNotes([note('a1')]);
+    setStorageScope(null);
+    expect(hasGuestData()).toBe(false);
+  });
+});
+
+describe('note storage isolation', () => {
+  it('scopes notes per account and keeps them out of the guest namespace', () => {
+    writeNotes([note('guest-1')]);
+
+    setStorageScope('user-a');
+    writeNotes([note('a1')]);
+    expect(readNotes().map((n) => n.id)).toEqual(['a1']);
+
+    setStorageScope('user-b');
+    expect(readNotes()).toEqual([]);
+    writeNotes([note('b1')]);
+
+    setStorageScope(null);
+    expect(readNotes().map((n) => n.id)).toEqual(['guest-1']);
+
+    setStorageScope('user-a');
+    expect(readNotes().map((n) => n.id)).toEqual(['a1']);
   });
 });

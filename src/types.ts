@@ -45,6 +45,20 @@ export interface Session {
   completed: boolean;
 }
 
+/**
+ * A plain-text note. `updatedAt` is the client's edit time (used for
+ * last-write-wins), `deletedAt` is a soft-delete tombstone so deletions
+ * propagate safely without a stale edit resurrecting a deleted note.
+ */
+export interface Note {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: number; // epoch ms
+  updatedAt: number; // epoch ms
+  deletedAt: number | null; // epoch ms tombstone, null = active
+}
+
 export type ThemePreference = 'light' | 'dark' | 'system';
 
 export interface Settings {

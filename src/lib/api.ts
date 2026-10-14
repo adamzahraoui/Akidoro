@@ -59,6 +59,52 @@ export interface ServerState {
   settingsUpdatedAt: string | null;
 }
 
+/** Supabase notes row shape (snake_case columns ↔ epoch-ms numbers). */
+export interface ServerNote {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+  deletedAt: number | null;
+}
+
+interface NoteRow {
+  user_id: string;
+  id: string;
+  title: string;
+  content: string;
+  created_at: number;
+  updated_at: number;
+  deleted_at: number | null;
+}
+
+function rowToNote(row: NoteRow): ServerNote {
+  return {
+    id: row.id,
+    title: row.title,
+    content: row.content,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+  };
+}
+
+/** Validate + clamp a note into a row; returns null for records that cannot be stored. */
+function noteToRow(userId: string, note: ServerNote): NoteRow | null {
+  const id = String(note.id ?? '').slice(0, 200);
+  if (!id) return null;
+  const title = String(note.title ?? '').slice(0, 300);
+  const content = String(note.content ?? '').slice(0, 100000);
+  const updatedAt = Math.round(Number(note.updatedAt) || 0);
+  if (!Number.isFinite(updatedAt) || updatedAt <= 0) return null;
+  const createdAt = Math.round(Number(note.createdAt) || updatedAt);
+  const rawDeleted = note.deletedAt == null ? null : Math.round(Number(note.deletedAt) || 0);
+  const deletedAt = rawDeleted == null || rawDeleted <= 0 ? null : rawDeleted;
+  if (deletedAt !== null && deletedAt < createdAt) return null;
+  return { user_id: userId, id, title, content, created_at: createdAt, updated_at: updatedAt, deleted_at: deletedAt };
+}
+
 export interface EmailPreferences {
   optIn: boolean;
   consentAt: string | null;
@@ -273,6 +319,34 @@ export const api = {
     });
     if (error) throw toApiError(error);
     return data as { applied: boolean; settings: Record<string, unknown> | null; updatedAt: string };
+  },
+
+  // --- Notes ---
+  async getNotes(): Promise<ServerNote[]> {
+    const sb = requireSupabase();
+    await currentUserId();
+    const { data, error } = await sb
+      .from('notes')
+      .select('id,title,content,created_at,updated_at,deleted_at')
+      .order('updated_at', { ascending: false });
+    if (error) throw toApiError(error);
+    return ((data ?? []) as NoteRow[]).map(rowToNote);
+  },
+
+  async putNotes(notes: ServerNote[]): Promise<{ ok: boolean; accepted: number }> {
+    const sb = requireSupabase();
+    const userId = await currentUserId();
+    const rows = notes
+      .map((note) => noteToRow(userId, note))
+      .filter((row): row is NonNullable<ReturnType<typeof noteToRow>> => row !== null);
+    let accepted = 0;
+    for (let i = 0; i < rows.length; i += 500) {
+      const chunk = rows.slice(i, i + 500);
+      const { error } = await sb.from('notes').upsert(chunk, { onConflict: 'user_id,id' });
+      if (error) throw toApiError(error);
+      accepted += chunk.length;
+    }
+    return { ok: true, accepted };
   },
 
   // --- Email preferences ---
