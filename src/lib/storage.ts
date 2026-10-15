@@ -268,3 +268,49 @@ export function exportSessions(): string {
     2,
   );
 }
+
+// --- IndexedDB restoration (non-destructive) ---
+export async function hydrateFromIndexedDB(): Promise<void> {
+  if (typeof indexedDB === 'undefined') return;
+  await new Promise<void>((resolve) => {
+    try {
+      const request = indexedDB.open('akidoro', 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv', { keyPath: 'key' });
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        let tx;
+        try {
+          tx = db.transaction('kv', 'readonly');
+        } catch {
+          resolve();
+          return;
+        }
+        const getAll = tx.objectStore('kv').getAll();
+        getAll.onsuccess = () => {
+          try {
+            for (const row of getAll.result || []) {
+              if (!row || typeof row.key !== 'string' || typeof row.value !== 'string') continue;
+              if (localStorage.getItem(row.key) !== null) continue;
+              try {
+                JSON.parse(row.value);
+                localStorage.setItem(row.key, row.value);
+              } catch {
+                /* leave invalid values alone */
+              }
+            }
+          } catch {
+            /* non-fatal */
+          }
+          resolve();
+        };
+        getAll.onerror = () => resolve();
+      };
+      request.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}

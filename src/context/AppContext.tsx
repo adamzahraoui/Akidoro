@@ -18,6 +18,7 @@ import {
   readCurrentTaskId,
   readSavedMusic,
   readStoredSettings,
+  hydrateFromIndexedDB,
   readTasks,
   replaceSessions,
   setStorageScope,
@@ -156,6 +157,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [accountScopeIds, setAccountScopeIds] = useState<string[]>(findAccountScopes());
   const [accountImportPending, setAccountImportPending] = useState(accountScopeIds.length > 0);
   const [guestMergePending, setGuestMergePending] = useState(hasGuestData());
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      await hydrateFromIndexedDB();
+      if (cancelled) return;
+      setSessions(readSessions());
+      setNotesAll(readNotes());
+      setSettings(loadSettings());
+      setTasks(readTasks());
+      setSavedMusic(readSavedMusic());
+      setCurrentTaskId(readCurrentTaskId());
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const commitNotes = useCallback((next: Note[]) => {
     writeNotes(next);
