@@ -65,7 +65,7 @@ function DailyChart({ week }: { week: WeekStats }) {
 }
 
 export function StatisticsView() {
-  const { sessions } = useApp();
+  const { sessions, accountScopeIds, importAccountData } = useApp();
   const [weekStart, setWeekStart] = useState(() => weekStartFor(Date.now()));
   const week = useMemo(() => computeWeek(sessions, weekStart), [sessions, weekStart]);
   const currentWeekStart = weekStartFor(Date.now());
@@ -75,6 +75,29 @@ export function StatisticsView() {
 
   return (
     <div className="space-y-6">
+      {accountScopeIds.length > 0 ? (
+        <Card>
+          <CardTitle hint="Recovery">Local account data found</CardTitle>
+          <p className="text-sm muted">
+            {accountScopeIds.length} set{accountScopeIds.length === 1 ? '' : 's'} of previously signed-in data are stored under separate local keys. They are
+            not included in guest statistics until you import them.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {accountScopeIds.map((scope, index) => (
+              <Button key={scope} size="sm" variant="primary" onClick={() => void importAccountData(scope)}>
+                Import data set {index + 1}
+              </Button>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+      <Card>
+        <CardTitle hint="Recovery">Data origin</CardTitle>
+        <p className="text-sm muted">
+          Browser storage is isolated by origin. Data recorded on adamzahraoui.me/Akidoro/ is not available on
+          adamzahraoui.github.io/Akidoro/, and vice versa. Use Settings → Export backup and Import backup to move data safely.
+        </p>
+      </Card>
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

@@ -172,3 +172,4 @@ describe('session storage dedupe', () => {
     expect(stored[0].completed).toBe(true);
   });
 });
+
