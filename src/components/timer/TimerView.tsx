@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { cyclePosition } from '../../timer/timerEngine';
 import { formatClock, modeLabel } from '../../lib/format';
@@ -21,6 +21,9 @@ const MODES: Array<{ id: Mode; label: string }> = [
 export function TimerView() {
   const { timer, settings } = useApp();
   const { state, remaining, controls } = timer;
+  const floatingRef = useRef<Window | null>(null);
+  const [floatingMessage, setFloatingMessage] = useState<string | null>(null);
+  const pipIntervalRef = useRef<number | null>(null);
 
   const isRunning = state.status === 'running';
   const isPaused = state.status === 'paused';
@@ -53,6 +56,97 @@ export function TimerView() {
     state.mode === 'focus'
       ? `Focus ${cycle.index} of ${cycle.total}`
       : `${modeLabel(state.mode)}`;
+
+  const isPipSupported =
+    typeof window !== 'undefined' && 'documentPictureInPicture' in window;
+
+  const buildFloatingDocument = (pipWindow: Window) => {
+    const doc = pipWindow.document;
+    const dark = document.documentElement.classList.contains('dark');
+    doc.head.innerHTML = `<style>
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: ui-sans-serif, system-ui, sans-serif; background: ${dark ? '#1c1d1b' : '#f7f4ee'}; color: ${dark ? '#f7f4ee' : '#1c1d1b'}; }
+      .wrap { min-height: 100vh; display: grid; place-items: center; padding: 12px; }
+      .card { background: ${dark ? '#242623' : '#fffdf8'}; border: 1px solid ${dark ? '#3a3d38' : '#e7e2d6'}; border-radius: 18px; padding: 12px; width: 100%; text-align: center; }
+      .logo { width: 24px; height: 24px; margin: 0 auto 8px; }
+      .time { font-family: ui-monospace, monospace; font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; }
+      .mode { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: ${dark ? '#f87171' : '#dc2626'}; margin-top: 4px; font-weight: 600; }
+      .btn { margin-top: 10px; border: 0; border-radius: 12px; background: #dc2626; color: white; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+      .btn:hover { background: #b91c1c; }
+    </style>`;
+    const root = doc.createElement('div');
+    root.className = 'wrap';
+    root.innerHTML = `
+      <div class="card">
+        <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="28" fill="#dc2626"></circle>
+          <circle cx="32" cy="32" r="19" fill="none" stroke="#fffdf8" stroke-width="4"></circle>
+          <path d="M24 43 L32 22 L40 43 M27 34 H37" fill="none" stroke="#fffdf8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"></path>
+          <line x1="32" y1="31" x2="32" y2="21" stroke="#fffdf8" stroke-width="4" stroke-linecap="round"></line>
+        </svg>
+        <div class="time" id="pip-time">--:--</div>
+        <div class="mode" id="pip-mode">Focus</div>
+        <button class="btn" id="pip-toggle">Start</button>
+      </div>
+    `;
+    doc.body.appendChild(root);
+
+    const timeEl = doc.getElementById('pip-time');
+    const modeEl = doc.getElementById('pip-mode');
+    const toggleBtn = doc.getElementById('pip-toggle');
+    const update = () => {
+      const s = timer.state;
+      const remainingLabel = state.status === 'running' ? timer.remaining : timer.remaining;
+      if (timeEl) timeEl.textContent = formatClock(remainingLabel);
+      if (modeEl) modeEl.textContent = modeLabel(s.mode);
+      if (toggleBtn) toggleBtn.textContent = s.status === 'running' ? 'Pause' : 'Start';
+    };
+    update();
+    toggleBtn?.addEventListener('click', () => {
+      if (timer.state.status === 'running') controls.pause();
+      else {
+        primeAudio();
+        controls.start();
+      }
+    });
+    pipIntervalRef.current = window.setInterval(update, 250);
+
+    pipWindow.addEventListener('pagehide', () => {
+      if (pipIntervalRef.current) window.clearInterval(pipIntervalRef.current);
+      pipIntervalRef.current = null;
+      floatingRef.current = null;
+    });
+  };
+
+  const openFloatingTimer = async () => {
+    if (floatingRef.current && !floatingRef.current.closed) {
+      floatingRef.current.focus();
+      return;
+    }
+    setFloatingMessage(null);
+    try {
+      if (isPipSupported) {
+        const pipWindow = await (window as any).documentPictureInPicture.requestWindow({
+          width: 260,
+          height: 220,
+        });
+        floatingRef.current = pipWindow;
+        buildFloatingDocument(pipWindow);
+      } else {
+        const popup = window.open('', 'akidoro-floating', 'width=320,height=220');
+        if (!popup) {
+          setFloatingMessage('Popup blocked. Allow popups for this site to open the floating timer.');
+          return;
+        }
+        floatingRef.current = popup;
+        buildFloatingDocument(popup);
+        popup.focus();
+      }
+    } catch (error) {
+      floatingRef.current = null;
+      setFloatingMessage('Could not open the floating timer. Try again after user interaction.');
+    }
+  };
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -146,8 +240,17 @@ export function TimerView() {
           />
         </div>
 
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+          <Button size="sm" variant="secondary" onClick={() => void openFloatingTimer()}>
+            Open floating timer
+          </Button>
+          {isPipSupported ? null : (
+            <span className="text-xs muted">Uses a compact browser popup; it may not stay on top of other apps.</span>
+          )}
+        </div>
+        {floatingMessage ? <p className="mt-2 text-center text-xs text-red-600 dark:text-red-400">{floatingMessage}</p> : null}
         <p className="mt-5 text-center text-xs muted" aria-hidden="true">
-          Shortcuts: Space to start/pause · R to reset · S to skip
+          Shortcuts: Space to start/pause · R to reset · S to skip. Keep the Akidoro tab open while using the floating timer.
         </p>
       </section>
 
