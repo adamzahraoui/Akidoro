@@ -55,7 +55,7 @@ export function GitHubStarButton() {
           markSeen();
           window.open('https://github.com/adamzahraoui/Akidoro', '_blank', 'noopener,noreferrer');
         }}
-        className="focus-ring inline-flex items-center justify-center rounded-xl border subtle-border p-2 text-stone-600 hover:bg-stone-200/60 dark:text-stone-300 dark:hover:bg-stone-800/60"
+        className="focus-ring inline-flex items-center justify-center rounded-xl border subtle-border p-2 text-stone-600 hover:bg-stone-200/60 dark:text-white dark:hover:bg-stone-800/60"
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M12 .587l3.668 7.431 8.2 1.193-5.934 5.787 1.401 8.168L12 18.896l-7.335 3.858 1.401-8.168L.132 9.211l8.2-1.193L12 .587z" />
