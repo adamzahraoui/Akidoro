@@ -6,6 +6,7 @@ import { StatisticsView } from './components/stats/StatisticsView';
 import { NotesView } from './components/notes/NotesView';
 import { SettingsView } from './components/settings/SettingsView';
 import { SessionSummary } from './components/timer/SessionSummary';
+import { FeedbackModal } from './components/feedback/FeedbackModal';
 import { ProjectsView } from './components/projects/ProjectsView';
 const WhiteboardView = lazy(() => import('./components/whiteboard/WhiteboardView').then((m) => ({ default: m.WhiteboardView })));
 import { useApp } from './context/AppContext';
@@ -60,6 +61,7 @@ export default function App() {
       <Nav view={view} onChange={setView} />
       <GuestMergeBanner />
       <SessionSummary />
+      <FeedbackModal />
       {indexedDbRecoveryOffers.length ? (
         <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
           <div className="card flex flex-wrap items-center justify-between gap-3 border-accent-300 p-4 dark:border-accent-800">
