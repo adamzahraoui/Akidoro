@@ -174,10 +174,40 @@ export function SettingsView() {
             className="max-w-xs flex-1"
             aria-valuetext={`${Math.round(settings.volume * 100)} percent`}
           />
-          <Button size="sm" onClick={() => playCompletionChime(settings.volume, 'focus')}>
+          <Button size="sm" onClick={() => playCompletionChime(settings.volume, 'focus', settings.chime)}>
             Test
           </Button>
         </div>
+        <label className="block text-sm font-medium" htmlFor="chime">Completion chime</label>
+        <select
+          id="chime"
+          value={settings.chime}
+          onChange={(e) => updateSettings({ chime: e.target.value as 'bell' | 'beep' | 'synth' })}
+          className="focus-ring mt-1.5 w-48 rounded-lg border subtle-border bg-surface-light px-3 py-2 text-sm dark:bg-surface-dark"
+        >
+          <option value="bell">Soft bell</option>
+          <option value="beep">Digital beep</option>
+          <option value="synth">Synthwave chime</option>
+        </select>
+        <Toggle label="Background tick sound" checked={settings.tickEnabled} onChange={(v) => updateSettings({ tickEnabled: v })} />
+        {settings.tickEnabled ? (
+          <div className="flex items-center gap-3 py-2">
+            <label htmlFor="tick-volume" className="text-sm font-medium">
+              Tick volume
+            </label>
+            <input
+              id="tick-volume"
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={settings.tickVolume}
+              onChange={(e) => updateSettings({ tickVolume: Number(e.target.value) })}
+              className="max-w-xs flex-1"
+              aria-label="Tick volume"
+            />
+          </div>
+        ) : null}
         <Toggle
           label="Browser notifications"
           description={

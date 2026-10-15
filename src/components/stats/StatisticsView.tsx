@@ -10,6 +10,7 @@ import {
   formatWeekday,
 } from '../../lib/format';
 import { Button } from '../ui/Button';
+import { ActivityHeatmap } from './ActivityHeatmap';
 import { Card, CardTitle } from '../ui/Card';
 
 function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -211,6 +212,7 @@ export function StatisticsView() {
           </Card>
         </>
       )}
+      <ActivityHeatmap sessions={sessions} />
       {true ? (
         <Card>
           <CardTitle hint="Actual duration recorded">Session history</CardTitle>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { playTick } from '../../lib/sound';
 import { cyclePosition } from '../../timer/timerEngine';
 import { formatClock, modeLabel } from '../../lib/format';
 import { primeAudio } from '../../lib/sound';
@@ -68,6 +69,52 @@ export function TimerView() {
   }, [focusMode]);
 
   const currentProject = projects?.find((project: any) => project.id === (state.projectId ?? currentProjectId)) ?? null;
+  useEffect(() => {
+    const modeEmoji = state.mode === 'focus' ? '🍅' : state.mode === 'short' ? '☕' : '🌙';
+    const suffix = state.status === 'running'
+      ? `(${formatClock(remaining)}) ${modeLabel(state.mode)} - Akidoro`
+      : state.status === 'paused'
+        ? `(Paused) ${modeLabel(state.mode)} - Akidoro`
+        : 'Akidoro';
+    document.title = `${modeEmoji} ${suffix}`;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      const fraction = state.plannedSec > 0 ? remaining / state.plannedSec : 0;
+      ctx.clearRect(0, 0, 32, 32);
+      ctx.beginPath();
+      ctx.arc(16, 16, 12, 0, Math.PI * 2);
+      ctx.strokeStyle = '#e7e2d6';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(16, 16, 12, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, Math.min(1, fraction)), false);
+      ctx.strokeStyle = '#dc2626';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+      const link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]') ?? document.createElement('link');
+      link.type = 'image/png';
+      link.rel = 'icon';
+      document.head.appendChild(link);
+      link.href = canvas.toDataURL('image/png');
+    }
+    return () => {
+      document.title = 'Akidoro';
+    };
+  }, [state.status, state.mode, state.plannedSec, remaining]);
+
+  useEffect(() => {
+    if (!isRunning || !settings.tickEnabled) return;
+    const id = window.setInterval(() => {
+      playTick(settings.tickVolume);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [isRunning, settings.tickEnabled, settings.tickVolume]);
+
   const statusText = isRunning ? 'Running' : isPaused ? 'Paused' : 'Ready';
   const cycleText =
     state.mode === 'focus'
@@ -190,7 +237,7 @@ export function TimerView() {
 
   if (focusMode) {
     return (
-      <div className="fixed inset-0 z-40 grid place-items-center bg-surface-light px-5 py-6 dark:bg-surface-dark" role="region" aria-label="Focus mode">
+      <div className="fixed inset-0 z-40 grid place-items-center bg-black px-5 py-6 text-white transition-opacity duration-300" role="region" aria-label="Focus mode">
         <button
           type="button"
           onClick={() => setFocusMode(false)}
@@ -343,8 +390,12 @@ export function TimerView() {
           </p>
         ) : null}
         {floatingMessage ? <p className="mt-2 text-center text-xs text-red-600 dark:text-red-400">{floatingMessage}</p> : null}
-        <p className="mt-5 text-center text-xs muted" aria-hidden="true">
-          Shortcuts: Space to start/pause · R to reset · S to skip. Keep the Akidoro tab open while using the floating timer.
+        <p className="mt-5 flex flex-wrap items-center justify-center gap-2 text-center text-xs muted" aria-hidden="true">
+          <kbd className="rounded border subtle-border px-1.5 py-0.5 font-mono text-[10px]">Space</kbd> Start/Pause
+          <span>·</span>
+          <kbd className="rounded border subtle-border px-1.5 py-0.5 font-mono text-[10px]">R</kbd> Reset
+          <span>·</span>
+          <kbd className="rounded border subtle-border px-1.5 py-0.5 font-mono text-[10px]">S</kbd> Skip
         </p>
       </section>
 

@@ -26,6 +26,24 @@ export function YouTubePanel() {
         externalLabel="Open in YouTube"
       />
 
+      <div className="flex flex-wrap gap-2">
+        {[
+          { name: '🎧 Lofi Girl', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk' },
+          { name: '🌧️ Rain & Thunder', url: 'https://www.youtube.com/watch?v=mPZkdNFkNps' },
+          { name: '🌃 Synthwave', url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY' },
+          { name: '☕ Coffee Shop Ambience', url: 'https://www.youtube.com/watch?v=hBGbt2CRDpA' },
+        ].map((preset) => (
+          <button
+            key={preset.name}
+            type="button"
+            onClick={() => yt.loadUrl(preset.url)}
+            className="focus-ring rounded-full border subtle-border px-3 py-1.5 text-xs font-medium hover:bg-stone-100 dark:hover:bg-stone-800/60"
+          >
+            {preset.name}
+          </button>
+        ))}
+      </div>
+
       {embed ? (
         <div className="space-y-2">
           <div className="overflow-hidden rounded-xl border subtle-border">

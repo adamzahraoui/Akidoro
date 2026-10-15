@@ -81,6 +81,7 @@ export interface Task {
   id: string;
   title: string;
   projectId?: string | null;
+  estimatedPomodoros?: number;
   completed: boolean;
   createdAt: number;
   updatedAt: number;
@@ -109,6 +110,9 @@ export interface Settings {
   soundEnabled: boolean;
   volume: number; // 0..1
   dailyGoalMin: number;
+  chime: 'bell' | 'beep' | 'synth';
+  tickEnabled: boolean;
+  tickVolume: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -123,6 +127,9 @@ export const DEFAULT_SETTINGS: Settings = {
   soundEnabled: true,
   volume: 0.5,
   dailyGoalMin: 120,
+  chime: 'bell',
+  tickEnabled: false,
+  tickVolume: 0.3,
 };
 
 export type MusicProvider = 'youtube' | 'spotify';

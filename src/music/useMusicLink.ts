@@ -6,6 +6,7 @@ export interface MusicLink<T> {
   urlError: string | null;
   setInput: (value: string) => void;
   load: () => void;
+  loadUrl: (input: string) => void;
   clear: () => void;
 }
 
@@ -67,11 +68,23 @@ export function useMusicLink<T>(
     persist(key, next);
   }, [key, parse, invalidMessage, state.input]);
 
+  const loadUrl = useCallback((input: string) => {
+    const parsed = parse(input);
+    if (!parsed) {
+      setUrlError(invalidMessage);
+      return;
+    }
+    setUrlError(null);
+    const next = { input, target: parsed };
+    setState(next);
+    persist(key, next);
+  }, [key, parse, invalidMessage]);
+
   const clear = useCallback(() => {
     setState({ input: '', target: null });
     setUrlError(null);
     persist(key, { input: '', target: null });
   }, [key]);
 
-  return { input: state.input, target: state.target, urlError, setInput, load, clear };
+  return { input: state.input, target: state.target, urlError, setInput, load, loadUrl, clear };
 }

@@ -85,7 +85,7 @@ interface AppContextValue {
   deleteNote: (id: string) => void;
   restoreNote: (id: string) => void;
   tasks: import('../types').Task[];
-  createTask: (title: string, projectId?: string | null) => string;
+  createTask: (title: string, projectId?: string | null, estimatedPomodoros?: number) => string;
   renameTask: (id: string, title: string) => void;
   toggleTask: (id: string) => void;
   setTaskProject: (id: string, projectId: string | null) => void;
@@ -265,7 +265,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const config = settingsRef.current;
       if (!event.recovered && event.session.completed) {
         const isFocus = event.session.mode === 'focus';
-        if (config.soundEnabled) playCompletionChime(config.volume, isFocus ? 'focus' : 'break');
+        if (config.soundEnabled) playCompletionChime(config.volume, isFocus ? 'focus' : 'break', config.chime);
         if (config.notifications) {
           const label = event.session.label ? `“${event.session.label}” ` : '';
           showNotification(
@@ -571,13 +571,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     commitNotes(next);
   }, [commitNotes]);
 
-  const createTask = useCallback((title: string, projectId?: string | null): string => {
+  const createTask = useCallback((title: string, projectId?: string | null, estimatedPomodoros?: number): string => {
     const now = Date.now();
     const task: Task = {
       id: uid('task'),
       title: title.trim(),
       completed: false,
       projectId: projectId ?? currentProjectIdRef.current,
+      estimatedPomodoros: estimatedPomodoros && estimatedPomodoros > 0 ? estimatedPomodoros : undefined,
       createdAt: now,
       updatedAt: now,
     };

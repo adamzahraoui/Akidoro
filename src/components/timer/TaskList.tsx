@@ -6,6 +6,7 @@ import { cx } from '../../lib/classNames';
 export function TaskList() {
   const { tasks, createTask, renameTask, toggleTask, deleteTask, currentTaskId, selectTask } = useApp();
   const [draft, setDraft] = useState('');
+  const [estimate, setEstimate] = useState('');
   const [completedOpen, setCompletedOpen] = useState(false);
 
   const active = tasks.filter((t) => !t.completed);
@@ -14,8 +15,9 @@ export function TaskList() {
   const create = () => {
     const title = draft.trim();
     if (!title) return;
-    createTask(title);
+    createTask(title, undefined, estimate ? Number(estimate) : undefined);
     setDraft('');
+    setEstimate('');
   };
 
   const remove = (id: string, title: string) => {
@@ -33,6 +35,16 @@ export function TaskList() {
       </div>
 
       <div className="flex gap-2">
+        <input
+          type="number"
+          min={1}
+          max={20}
+          value={estimate}
+          onChange={(e) => setEstimate(e.target.value)}
+          placeholder="🍅"
+          aria-label="Estimated Pomodoros"
+          className="focus-ring w-16 rounded-xl border subtle-border bg-surface-light px-2 py-2 text-sm dark:bg-surface-dark"
+        />
         <input
           type="text"
           value={draft}
@@ -80,6 +92,7 @@ export function TaskList() {
                   aria-label="Task title"
                   className="focus-ring min-w-0 flex-1 border-0 bg-transparent px-1 py-0.5 text-sm"
                 />
+                {task.estimatedPomodoros ? <span className="text-xs muted">[{task.estimatedPomodoros} 🍅]</span> : null}
                 <button
                   type="button"
                   onClick={() => selectTask(currentTaskId === task.id ? null : task.id)}
@@ -114,7 +127,7 @@ export function TaskList() {
               {completed.map((task) => (
                 <li key={task.id} className="flex items-center gap-2 rounded-xl border subtle-border p-3 opacity-70">
                   <input type="checkbox" checked onChange={() => toggleTask(task.id)} aria-label={`Mark ${task.title} incomplete`} />
-                  <span className="flex-1 text-sm line-through">{task.title}</span>
+                  <span className="flex-1 text-sm line-through transition-all duration-500">{task.title} {task.estimatedPomodoros ? `[${task.estimatedPomodoros} 🍅]` : ''}</span>
                   <Button size="sm" variant="ghost" onClick={() => deleteTask(task.id)}>
                     Delete
                   </Button>
