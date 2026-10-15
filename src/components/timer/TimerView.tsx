@@ -25,6 +25,7 @@ export function TimerView() {
   timerRef.current = timer;
   const floatingRef = useRef<Window | null>(null);
   const [floatingMessage, setFloatingMessage] = useState<string | null>(null);
+  const [floatingMode, setFloatingMode] = useState<'none' | 'pip' | 'popup'>('none');
   const pipIntervalRef = useRef<number | null>(null);
 
   const isRunning = state.status === 'running';
@@ -120,6 +121,7 @@ export function TimerView() {
       if (pipIntervalRef.current) window.clearInterval(pipIntervalRef.current);
       pipIntervalRef.current = null;
       floatingRef.current = null;
+      setFloatingMode('none');
     });
   };
 
@@ -129,15 +131,34 @@ export function TimerView() {
       return;
     }
     setFloatingMessage(null);
+    setFloatingMode('none');
     try {
       if (isPipSupported) {
-        const pipWindow = await (window as any).documentPictureInPicture.requestWindow({
-          width: 260,
-          height: 220,
-        });
-        floatingRef.current = pipWindow;
-        buildFloatingDocument(pipWindow);
+        try {
+          const pipWindow = await (window as any).documentPictureInPicture.requestWindow({
+            width: 260,
+            height: 220,
+          });
+          floatingRef.current = pipWindow;
+          buildFloatingDocument(pipWindow);
+          setFloatingMode('pip');
+        } catch (error) {
+          setFloatingMode('popup');
+          const name = error instanceof Error ? error.name : 'Error';
+          const message = error instanceof Error ? error.message : String(error);
+          setFloatingMessage(`Document Picture-in-Picture request failed (${name}: ${message || 'no details'}). Falling back to a normal popup, which is not guaranteed to stay on top.`);
+          const popup = window.open('', 'akidoro-floating', 'width=320,height=220');
+          if (!popup) {
+            setFloatingMessage('Popup blocked. Allow popups for this site to open the floating timer.');
+            return;
+          }
+          floatingRef.current = popup;
+          buildFloatingDocument(popup);
+          popup.focus();
+        }
       } else {
+        setFloatingMode('popup');
+        setFloatingMessage('Document Picture-in-Picture is not supported in this browser. Using a normal popup, which is not guaranteed to stay on top.');
         const popup = window.open('', 'akidoro-floating', 'width=320,height=220');
         if (!popup) {
           setFloatingMessage('Popup blocked. Allow popups for this site to open the floating timer.');
@@ -253,6 +274,11 @@ export function TimerView() {
             <span className="text-xs muted">Uses a compact browser popup; it may not stay on top of other apps.</span>
           )}
         </div>
+        {floatingMode !== 'none' ? (
+          <p className="mt-2 text-center text-xs muted">
+            Floating timer mode: {floatingMode === 'pip' ? 'Document Picture-in-Picture' : 'Popup fallback'}
+          </p>
+        ) : null}
         {floatingMessage ? <p className="mt-2 text-center text-xs text-red-600 dark:text-red-400">{floatingMessage}</p> : null}
         <p className="mt-5 text-center text-xs muted" aria-hidden="true">
           Shortcuts: Space to start/pause · R to reset · S to skip. Keep the Akidoro tab open while using the floating timer.

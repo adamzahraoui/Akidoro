@@ -1,0 +1,16 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ executablePath: '/usr/bin/google-chrome', headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
+await page.waitForTimeout(2000);
+await page.click('button:has-text("Start")');
+await page.waitForTimeout(500);
+await page.click('button:has-text("Open floating timer")');
+await page.waitForTimeout(3000);
+const body = await page.locator('body').innerText();
+console.log(body.split('\n').filter(l => /Floating timer mode|Picture-in-Picture|Popup/i.test(l)).slice(0,10));
+console.log('pip support', await page.evaluate(() => 'documentPictureInPicture' in window));
+const frames = page.frames();
+console.log('frames', frames.map(f=>f.url()));
+await page.screenshot({ path: '/tmp/opencode/pip-ui.png' });
+await browser.close();
