@@ -9,9 +9,8 @@ export function ActivityHeatmap({ sessions }: { sessions: any[] }) {
   for (const session of sessions ?? []) {
     if (session.mode !== 'focus') continue;
     for (const segment of session.segments ?? []) {
-      const start = new Date(segment.start);
-      start.setHours(0, 0, 0, 0);
-      const key = start.toISOString().slice(0, 10);
+      const local = new Date(segment.start);
+      const key = `${local.getFullYear()}-${String(local.getMonth()+1).padStart(2,'0')}-${String(local.getDate()).padStart(2,'0')}`;
       const minutes = (segment.end - segment.start) / 60000;
       values.set(key, (values.get(key) ?? 0) + minutes);
     }
@@ -20,7 +19,7 @@ export function ActivityHeatmap({ sessions }: { sessions: any[] }) {
   const data = Array.from({ length: days }, (_, index) => {
     const day = new Date(today);
     day.setDate(day.getDate() - (days - 1 - index));
-    const key = day.toISOString().slice(0, 10);
+    const key = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
     return { key, minutes: values.get(key) ?? 0 };
   });
 
