@@ -92,13 +92,6 @@ export function StatisticsView() {
         </Card>
       ) : null}
       <Card>
-        <CardTitle hint="Recovery">Data origin</CardTitle>
-        <p className="text-sm muted">
-          Browser storage is isolated by origin. Data recorded on adamzahraoui.me/Akidoro/ is not available on
-          adamzahraoui.github.io/Akidoro/, and vice versa. Use Settings → Export backup and Import backup to move data safely.
-        </p>
-      </Card>
-      <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-lg font-semibold">Weekly statistics</h1>
