@@ -1,3 +1,4 @@
+import { DailyGoalControl } from './DailyGoalControl';
 import { useApp } from '../../context/AppContext';
 
 function localDayStart(ms: number): number {
@@ -78,6 +79,9 @@ export function TodayProgress() {
         <p className="mt-2 text-[11px] muted">
           Actual focus time is {hoursText(minutes)}. The progress bar caps at 100%.
         </p>
+        <div className="mt-4">
+          <DailyGoalControl compact />
+        </div>
       </div>
     </section>
   );

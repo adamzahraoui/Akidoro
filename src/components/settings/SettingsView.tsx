@@ -8,6 +8,7 @@ import { playCompletionChime } from '../../lib/sound';
 import type { ThemePreference } from '../../types';
 import { Button } from '../ui/Button';
 import { Card, CardTitle } from '../ui/Card';
+import { DailyGoalControl } from '../timer/DailyGoalControl';
 import { NumberField } from '../ui/NumberField';
 import { Toggle } from '../ui/Toggle';
 
@@ -124,6 +125,14 @@ export function SettingsView() {
           checked={settings.autoStartFocus}
           onChange={(v) => updateSettings({ autoStartFocus: v })}
         />
+      </Card>
+
+      <Card>
+        <CardTitle>Daily focus goal</CardTitle>
+        <p className="text-sm muted">This goal is used by the Timer page, the progress card, and all percentages.</p>
+        <div className="mt-4">
+          <DailyGoalControl />
+        </div>
       </Card>
 
       <Card>

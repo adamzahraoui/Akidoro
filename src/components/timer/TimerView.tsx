@@ -21,6 +21,7 @@ const MODES: Array<{ id: Mode; label: string }> = [
 export function TimerView() {
   const { timer, settings } = useApp();
   const { state, remaining, controls } = timer;
+  const { projects, currentProjectId } = useApp() as any;
   const timerRef = useRef(timer);
   timerRef.current = timer;
   const floatingRef = useRef<Window | null>(null);
@@ -66,6 +67,7 @@ export function TimerView() {
     return () => window.removeEventListener('keydown', onKey);
   }, [focusMode]);
 
+  const currentProject = projects?.find((project: any) => project.id === (state.projectId ?? currentProjectId)) ?? null;
   const statusText = isRunning ? 'Running' : isPaused ? 'Paused' : 'Ready';
   const cycleText =
     state.mode === 'focus'
@@ -185,6 +187,45 @@ export function TimerView() {
       setFloatingMessage('Could not open the floating timer. Try again after user interaction.');
     }
   };
+
+  if (focusMode) {
+    return (
+      <div className="fixed inset-0 z-40 grid place-items-center bg-surface-light px-5 py-6 dark:bg-surface-dark" role="region" aria-label="Focus mode">
+        <button
+          type="button"
+          onClick={() => setFocusMode(false)}
+          className="focus-ring absolute right-4 top-4 rounded-xl border subtle-border bg-surface-dark/0 px-3 py-2 text-sm font-medium text-stone-600 dark:text-stone-300"
+          aria-label="Exit focus mode"
+        >
+          Exit focus mode
+        </button>
+        <section className="flex w-full max-w-4xl flex-col items-center text-center">
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-accent-600 dark:text-accent-300">
+            {modeLabel(state.mode)}
+          </p>
+          <div
+            className="mt-4 font-mono font-semibold tabular-nums text-stone-900 dark:text-white"
+            style={{ fontSize: 'clamp(4rem, 17vw, 11rem)', lineHeight: '1' }}
+            role="timer"
+          >
+            {formatClock(remaining)}
+          </div>
+          <p className="mt-4 text-sm muted">{state.label || currentProject?.name || ''}</p>
+          <p className="mt-2 text-xs muted">{cycleText} · {statusText}</p>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            {isRunning ? (
+              <Button variant="primary" size="lg" onClick={controls.pause} aria-label="Pause timer">Pause</Button>
+            ) : (
+              <Button variant="primary" size="lg" onClick={() => { primeAudio(); controls.start(); }} aria-label={isPaused ? 'Resume timer' : 'Start timer'}>{isPaused ? 'Resume' : 'Start'}</Button>
+            )}
+            <Button onClick={controls.reset} disabled={!hasProgress} aria-label="Reset timer">Reset</Button>
+            <Button onClick={controls.skip} aria-label="Skip to next session">Skip</Button>
+          </div>
+          <p className="mt-6 text-xs muted">Press Esc to leave focus mode. Keep music playing on the main page.</p>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
