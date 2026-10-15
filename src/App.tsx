@@ -41,7 +41,7 @@ function GuestMergeBanner() {
 
 export default function App() {
   const [view, setView] = useState<View>('timer');
-  const { accountImportPending, accountScopeIds, importAccountData, dismissAccountImport } = useApp();
+  const { accountImportPending, accountScopeIds, importAccountData, dismissAccountImport, indexedDbRecoveryOffers, recoverIndexedDb } = useApp();
   useEffect(() => {
     const onNavigate = (event: Event) => {
       const detail = (event as CustomEvent<string>).detail;
@@ -57,6 +57,25 @@ export default function App() {
     <div className="min-h-full">
       <Nav view={view} onChange={setView} />
       <GuestMergeBanner />
+      {indexedDbRecoveryOffers.length ? (
+        <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
+          <div className="card flex flex-wrap items-center justify-between gap-3 border-accent-300 p-4 dark:border-accent-800">
+            <p className="text-sm">
+              Found {indexedDbRecoveryOffers.reduce((n, o) => n + (o.indexedDbCount > 0 ? o.indexedDbCount : 0), 0)} record(s) in browser storage that
+              are missing from this view. No original data was changed.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => void recoverIndexedDb()}
+                className="focus-ring rounded-xl bg-accent-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-accent-700"
+              >
+                Restore from browser storage
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {accountImportPending ? (
         <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
           <div className="card flex flex-wrap items-center justify-between gap-3 p-4">

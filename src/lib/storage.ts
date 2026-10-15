@@ -314,3 +314,139 @@ export async function hydrateFromIndexedDB(): Promise<void> {
     }
   });
 }
+
+
+export interface StorageRecoveryOffer {
+  key: string;
+  indexedDbCount: number;
+  localCount: number | null;
+  localMissing: boolean;
+  emptyLocal: boolean;
+  populatedIndexedDb: boolean;
+}
+
+const RECOVERY_KEYS = [
+  STORAGE_KEYS.sessions,
+  STORAGE_KEYS.notes,
+  STORAGE_KEYS.tasks,
+  STORAGE_KEYS.savedMusic,
+  STORAGE_KEYS.settings,
+];
+
+export async function detectIndexedDbRecovery(): Promise<StorageRecoveryOffer[]> {
+  if (typeof indexedDB === 'undefined') return [];
+  try {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('akidoro', 1);
+      request.onupgradeneeded = () => {
+        const result = request.result;
+        if (!result.objectStoreNames.contains('kv')) result.createObjectStore('kv', { keyPath: 'key' });
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const offers: StorageRecoveryOffer[] = [];
+    const tx = db.transaction('kv', 'readonly');
+    const getAll = tx.objectStore('kv').getAll();
+    const rows = await new Promise<any[]>((resolve, reject) => {
+      getAll.onsuccess = () => resolve(getAll.result || []);
+      getAll.onerror = () => reject(getAll.error);
+    });
+    db.close();
+    const byKey = new Map(rows.map((row) => [row.key, row.value]));
+    for (const key of RECOVERY_KEYS) {
+      const raw = byKey.get(key);
+      let indexedDbCount = -1;
+      try {
+        const parsed = raw ? JSON.parse(raw) : null;
+        indexedDbCount = Array.isArray(parsed) ? parsed.length : (parsed ? 1 : 0);
+      } catch {
+        indexedDbCount = -1;
+      }
+      const localRaw = localStorage.getItem(key);
+      const localMissing = localRaw === null;
+      let localCount = null;
+      let emptyLocal = false;
+      if (!localMissing) {
+        try {
+          const parsed = JSON.parse(localRaw || '');
+          localCount = Array.isArray(parsed) ? parsed.length : (parsed ? 1 : 0);
+          emptyLocal = Array.isArray(parsed) && parsed.length === 0;
+        } catch {
+          localCount = NaN;
+        }
+      }
+      const offer = {
+        key,
+        indexedDbCount,
+        localCount,
+        localMissing,
+        emptyLocal,
+        populatedIndexedDb: indexedDbCount > 0,
+      };
+      if (!offer.localMissing && !offer.emptyLocal) continue;
+      if (!offer.populatedIndexedDb) continue;
+      offers.push(offer);
+    }
+    return offers;
+  } catch {
+    return [];
+  }
+}
+
+export async function recoverFromIndexedDb(keys?: string[]): Promise<number> {
+  const offers = await detectIndexedDbRecovery();
+  const targets = offers.filter((offer) => !keys || keys.includes(offer.key));
+  let recovered = 0;
+  for (const offer of targets) {
+    try {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('akidoro', 1);
+        request.onupgradeneeded = () => {
+          const result = request.result;
+          if (!result.objectStoreNames.contains('kv')) result.createObjectStore('kv', { keyPath: 'key' });
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const getAll = db.transaction('kv', 'readonly').objectStore('kv').getAll();
+      const rows = await new Promise<any[]>((resolve, reject) => {
+        getAll.onsuccess = () => resolve(getAll.result || []);
+        getAll.onerror = () => reject(getAll.error);
+      });
+      const row = rows.find((item) => item.key === offer.key);
+      db.close();
+      if (!row || typeof row.value !== 'string') continue;
+      JSON.parse(row.value);
+      const localRaw = localStorage.getItem(offer.key);
+      if (localRaw !== null) {
+        try {
+          const localParsed = JSON.parse(localRaw);
+          const incomingParsed = JSON.parse(row.value);
+          if (Array.isArray(localParsed) && Array.isArray(incomingParsed)) {
+            let merged = localParsed;
+            if (localParsed.length === 0) merged = incomingParsed;
+            else {
+              const byId = new Map(merged.map((x) => [x?.id ?? JSON.stringify(x), x]));
+              for (const item of incomingParsed) {
+                const id = item?.id ?? JSON.stringify(item);
+                if (!byId.has(id)) byId.set(id, item);
+              }
+              merged = [...byId.values()];
+            }
+            localStorage.setItem(offer.key, JSON.stringify(merged));
+            recovered += 1;
+            continue;
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+      localStorage.setItem(offer.key, row.value);
+      recovered += 1;
+    } catch {
+      /* ignore one failed key */
+    }
+  }
+  return recovered;
+}

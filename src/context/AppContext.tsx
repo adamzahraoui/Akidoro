@@ -20,6 +20,8 @@ import {
   readStoredSettings,
   hydrateFromIndexedDB,
   readTasks,
+  detectIndexedDbRecovery,
+  recoverFromIndexedDb,
   replaceSessions,
   setStorageScope,
   writeNotes,
@@ -85,6 +87,8 @@ interface AppContextValue {
   googleLoginConfigured: boolean;
   login: () => void;
   logout: () => Promise<void>;
+  indexedDbRecoveryOffers: import('../lib/storage').StorageRecoveryOffer[];
+  recoverIndexedDb: (keys?: string[]) => Promise<number>;
   authError: string | null;
   dismissAuthError: () => void;
   sync: SyncInfo;
@@ -157,11 +161,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [accountScopeIds, setAccountScopeIds] = useState<string[]>(findAccountScopes());
   const [accountImportPending, setAccountImportPending] = useState(accountScopeIds.length > 0);
   const [guestMergePending, setGuestMergePending] = useState(hasGuestData());
+  const [indexedDbRecoveryOffers, setIndexedDbRecoveryOffers] = useState<import('../lib/storage').StorageRecoveryOffer[]>([]);
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       await hydrateFromIndexedDB();
+      const offers = await detectIndexedDbRecovery().catch(() => []);
       if (cancelled) return;
+      setIndexedDbRecoveryOffers(offers);
       setSessions(readSessions());
       setNotesAll(readNotes());
       setSettings(loadSettings());
@@ -500,6 +507,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     commitSavedMusic(savedMusicRef.current.filter((m) => m.id !== id));
   }, [commitSavedMusic]);
 
+  const recoverIndexedDb = useCallback(async (keys?: string[]): Promise<number> => {
+    const recovered = await recoverFromIndexedDb(keys);
+    const offers = await detectIndexedDbRecovery().catch(() => []);
+    setIndexedDbRecoveryOffers(offers);
+    setSessions(readSessions());
+    setNotesAll(readNotes());
+    setSettings(loadSettings());
+    setTasks(readTasks());
+    setSavedMusic(readSavedMusic());
+    setCurrentTaskId(readCurrentTaskId());
+    return recovered;
+  }, []);
+
   const mergeGuestData = useCallback(async () => {
     const guestSessions = readGuestSessions();
     const guestSettings = readGuestSettings();
@@ -608,6 +628,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateNote,
       deleteNote,
       restoreNote,
+      indexedDbRecoveryOffers,
+      recoverIndexedDb,
       accountImportPending,
       accountScopeIds,
       importAccountData,
@@ -651,6 +673,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       updateNote,
       deleteNote,
       restoreNote,
+      indexedDbRecoveryOffers,
+      recoverIndexedDb,
       accountImportPending,
       accountScopeIds,
       importAccountData,
