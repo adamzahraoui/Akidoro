@@ -29,6 +29,7 @@ export function YouTubePanel() {
       <div className="flex flex-wrap gap-2">
         {[
           { name: '🎧 Lofi Girl', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk' },
+          { name: '📖 Quran (Surat Al-Baqarah - Al-Afasy)', url: 'https://www.youtube.com/watch?v=2S8S-3Lp2sM' },
           { name: '🌧️ Rain & Thunder', url: 'https://www.youtube.com/watch?v=mPZkdNFkNps' },
           { name: '🌃 Synthwave', url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY' },
           { name: '☕ Coffee Shop Ambience', url: 'https://www.youtube.com/watch?v=hBGbt2CRDpA' },
