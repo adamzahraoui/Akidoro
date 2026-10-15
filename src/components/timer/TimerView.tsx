@@ -21,6 +21,8 @@ const MODES: Array<{ id: Mode; label: string }> = [
 export function TimerView() {
   const { timer, settings } = useApp();
   const { state, remaining, controls } = timer;
+  const timerRef = useRef(timer);
+  timerRef.current = timer;
   const floatingRef = useRef<Window | null>(null);
   const [floatingMessage, setFloatingMessage] = useState<string | null>(null);
   const pipIntervalRef = useRef<number | null>(null);
@@ -95,20 +97,23 @@ export function TimerView() {
     const modeEl = doc.getElementById('pip-mode');
     const toggleBtn = doc.getElementById('pip-toggle');
     const update = () => {
-      const s = timer.state;
-      const remainingLabel = state.status === 'running' ? timer.remaining : timer.remaining;
-      if (timeEl) timeEl.textContent = formatClock(remainingLabel);
+      const latest = timerRef.current;
+      const s = latest.state;
+      if (timeEl) timeEl.textContent = formatClock(latest.remaining);
       if (modeEl) modeEl.textContent = modeLabel(s.mode);
-      if (toggleBtn) toggleBtn.textContent = s.status === 'running' ? 'Pause' : 'Start';
+      if (toggleBtn) toggleBtn.textContent = s.status === 'running' ? 'Pause' : s.status === 'paused' ? 'Resume' : 'Start';
     };
     update();
-    toggleBtn?.addEventListener('click', () => {
-      if (timer.state.status === 'running') controls.pause();
-      else {
-        primeAudio();
-        controls.start();
-      }
-    });
+    if (toggleBtn) {
+      toggleBtn.onclick = () => {
+        const latest = timerRef.current;
+        if (latest.state.status === 'running') latest.controls.pause();
+        else {
+          primeAudio();
+          latest.controls.start();
+        }
+      };
+    }
     pipIntervalRef.current = window.setInterval(update, 250);
 
     pipWindow.addEventListener('pagehide', () => {
