@@ -33,6 +33,7 @@ export function TimerView() {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && /^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(target.tagName)) return;
+      if (target && typeof target.closest === 'function' && target.closest('.excalidraw')) return;
       if (e.code === 'Space') {
         e.preventDefault();
         if (isRunning) controls.pause();

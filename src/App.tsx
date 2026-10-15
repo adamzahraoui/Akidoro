@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Nav } from './components/Nav';
 import type { View } from './components/Nav';
 import { TimerView } from './components/timer/TimerView';
 import { StatisticsView } from './components/stats/StatisticsView';
 import { NotesView } from './components/notes/NotesView';
 import { SettingsView } from './components/settings/SettingsView';
+const WhiteboardView = lazy(() => import('./components/whiteboard/WhiteboardView').then((m) => ({ default: m.WhiteboardView })));
 import { useApp } from './context/AppContext';
 
 function GuestMergeBanner() {
@@ -97,6 +98,11 @@ export default function App() {
         </div>
         <div hidden={view !== 'settings'}>
           <SettingsView />
+        </div>
+        <div hidden={view !== 'whiteboard'}>
+          <Suspense fallback={<div className="card p-6 text-sm muted">Loading whiteboard…</div>}>
+            <WhiteboardView />
+          </Suspense>
         </div>
       </main>
     </div>
