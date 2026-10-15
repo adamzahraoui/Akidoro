@@ -258,61 +258,59 @@ export function WhiteboardView() {
 
   return (
     <div className={cx(fullscreen ? 'fixed inset-0 z-50 bg-canvas-light dark:bg-canvas-dark p-2' : 'space-y-4')}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={activeId ?? ''}
-            onChange={(event) => void selectBoard(event.target.value)}
-            aria-label="Select whiteboard"
-            className="focus-ring rounded-xl border subtle-border bg-surface-light px-3 py-2 text-sm dark:bg-surface-dark"
-          >
-            {boards.map((board) => (
-              <option key={board.id} value={board.id}>
-                {board.name}
-              </option>
-            ))}
-          </select>
-          <Button size="sm" variant="primary" onClick={() => void createBoard()}>
-            New board
-          </Button>
-          <Button size="sm" variant="ghost" onClick={renameActive}>
-            Rename
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => void duplicateActive()}>
-            Duplicate
-          </Button>
-          <Button size="sm" variant="danger" onClick={() => void deleteActive()}>
-            Delete
-          </Button>
-          <label className="focus-ring inline-flex cursor-pointer items-center rounded-xl border subtle-border px-3 py-2 text-sm">
-            Import
-            <input
-              type="file"
-              accept=".excalidraw,.json,image/*"
-              hidden
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void importBoard(file);
-                event.target.value = '';
-              }}
-            />
-          </label>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs muted">{saveStatus === 'saving' ? 'Saving…' : saveStatus === 'error' ? 'Save failed' : 'Saved locally'}</span>
-          <Button size="sm" variant="ghost" onClick={() => void exportBoard('json')}>
-            Export .excalidraw
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => void exportBoard('png')}>
-            PNG
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => void exportBoard('svg')}>
-            SVG
-          </Button>
-          <Button size="sm" variant="secondary" onClick={() => setFullscreen((value) => !value)}>
-            {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-          </Button>
-        </div>
+      <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+        <select
+          value={activeId ?? ''}
+          onChange={(event) => void selectBoard(event.target.value)}
+          aria-label="Select whiteboard"
+          className="focus-ring h-9 shrink-0 rounded-xl border subtle-border bg-surface-light px-3 text-sm dark:bg-surface-dark"
+        >
+          {boards.map((board) => (
+            <option key={board.id} value={board.id}>
+              {board.name}
+            </option>
+          ))}
+        </select>
+        <Button size="sm" variant="primary" className="shrink-0" onClick={() => void createBoard()}>
+          New board
+        </Button>
+        <Button size="sm" variant="ghost" className="shrink-0" onClick={renameActive}>
+          Rename
+        </Button>
+        <Button size="sm" variant="ghost" className="shrink-0" onClick={() => void duplicateActive()}>
+          Duplicate
+        </Button>
+        <Button size="sm" variant="danger" className="shrink-0" onClick={() => void deleteActive()}>
+          Delete
+        </Button>
+        <label className="focus-ring inline-flex h-9 shrink-0 cursor-pointer items-center rounded-xl border subtle-border bg-surface-light px-3 text-sm dark:bg-surface-dark">
+          Import
+          <input
+            type="file"
+            accept=".excalidraw,.json,image/*"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void importBoard(file);
+              event.target.value = '';
+            }}
+          />
+        </label>
+        <Button size="sm" variant="ghost" className="shrink-0" onClick={() => void exportBoard('json')}>
+          Export .excalidraw
+        </Button>
+        <Button size="sm" variant="ghost" className="shrink-0" onClick={() => void exportBoard('png')}>
+          PNG
+        </Button>
+        <Button size="sm" variant="ghost" className="shrink-0" onClick={() => void exportBoard('svg')}>
+          SVG
+        </Button>
+        <Button size="sm" variant="secondary" className="shrink-0" onClick={() => setFullscreen((value) => !value)}>
+          {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+        </Button>
+        {saveStatus === 'error' ? (
+          <span className="shrink-0 text-xs font-medium text-red-600 dark:text-red-400">Save failed</span>
+        ) : null}
       </div>
       {currentBoard ? (
         <p className="text-xs muted">Last edited {new Date(currentBoard.updatedAt).toLocaleString()}</p>
