@@ -50,7 +50,8 @@ export function GitHubStarButton() {
         rel="noopener noreferrer"
         aria-label="Star Akidoro on GitHub"
         title="Star Akidoro on GitHub"
-        onClick={() => {
+        onClick={(event) => {
+          event.preventDefault();
           markSeen();
           window.open('https://github.com/adamzahraoui/Akidoro', '_blank', 'noopener,noreferrer');
         }}
