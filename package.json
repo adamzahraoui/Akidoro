@@ -28,6 +28,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "better-sqlite3": "^13.0.3",
+    "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.14.6",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",

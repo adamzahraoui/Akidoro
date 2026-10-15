@@ -37,6 +37,7 @@ import type { SessionEndEvent, UseTimerResult } from '../timer/useTimer';
 import { playCompletionChime } from '../lib/sound';
 import { showNotification } from '../lib/notifications';
 import { formatDuration } from '../lib/format';
+import { getAllWhiteboards, putWhiteboard } from '../lib/whiteboardStorage';
 
 export interface SyncInfo {
   phase: 'local';
@@ -52,7 +53,7 @@ interface AppContextValue {
   sessions: Session[];
   clearHistory: () => void;
   exportHistory: () => string;
-  exportBackup: () => string;
+  exportBackup: () => Promise<string>;
   importBackup: (json: string) => Promise<{ ok: boolean; message: string }>;
   timer: UseTimerResult;
   notes: Note[];
@@ -234,7 +235,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const exportHistory = useCallback(() => exportSessions(), []);
 
-  const exportBackup = useCallback((): string => {
+  const exportBackup = useCallback(async (): Promise<string> => {
+    let whiteboards: unknown[] = [];
+    try {
+      whiteboards = await getAllWhiteboards();
+    } catch {
+      whiteboards = [];
+    }
     return JSON.stringify(
       {
         version: 1,
@@ -246,6 +253,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         notes: notesAllRef.current,
         tasks: tasksRef.current,
         savedMusic: savedMusicRef.current,
+        whiteboards,
       },
       null,
       2,
@@ -272,6 +280,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const importedNotes = Array.isArray(body.notes) ? body.notes : null;
     const importedTasks = Array.isArray(body.tasks) ? body.tasks : [];
     const importedMusic = Array.isArray(body.savedMusic) ? body.savedMusic : [];
+    const importedWhiteboards = Array.isArray(body.whiteboards) ? body.whiteboards : [];
     if (!importedSessions || !importedNotes) {
       return { ok: false, message: 'Backup is missing sessions or notes.' };
     }
@@ -328,6 +337,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     sessionsRef.current = mergedSessions;
 
     commitNotes(mergeNotes(notesAllRef.current, notesToImport));
+
+    // Whiteboards: remap IDs to avoid collisions and preserve scene/image data.
+    const existingBoards = await getAllWhiteboards().catch(() => []);
+    const existingIds = new Set(existingBoards.map((b: any) => b?.id));
+    for (const item of importedWhiteboards) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as Record<string, unknown>;
+      let id = String(row.id ?? '').trim();
+      if (!id || existingIds.has(id)) id = crypto.randomUUID();
+      existingIds.add(id);
+      const scene = row.scene && typeof row.scene === 'object' ? row.scene : { elements: [], appState: {}, files: {} };
+      const board = {
+        id,
+        name: String(row.name ?? 'Imported board').slice(0, 200),
+        createdAt: Math.round(Number(row.createdAt) || Date.now()),
+        updatedAt: Math.round(Number(row.updatedAt) || Date.now()),
+        scene,
+      };
+      try {
+        await putWhiteboard(board as any);
+      } catch {
+        /* keep importing other records */
+      }
+    }
 
     const sanitizedTasks: Task[] = [];
     for (const item of importedTasks) {

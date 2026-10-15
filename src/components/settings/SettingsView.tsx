@@ -43,8 +43,8 @@ export function SettingsView() {
     window.setTimeout(() => setExported(false), 2500);
   };
 
-  const onExportBackup = () => {
-    const json = exportBackup();
+  const onExportBackup = async () => {
+    const json = await exportBackup();
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');

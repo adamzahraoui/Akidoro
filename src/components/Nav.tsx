@@ -31,16 +31,16 @@ export function Nav({ view, onChange }: { view: View; onChange: (view: View) => 
             aria-label="Akidoro timer logo"
           >
             <circle cx="32" cy="32" r="28" fill="#dc2626" />
-            <circle cx="32" cy="32" r="19" fill="none" stroke="#fffdf8" stroke-width="4" />
+            <circle cx="32" cy="32" r="19" fill="none" stroke="#fffdf8" strokeWidth="4" />
             <path
               d="M24 43 L32 22 L40 43 M27 34 H37"
               fill="none"
               stroke="#fffdf8"
-              stroke-width="4"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+              strokeWidth="4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
             />
-            <line x1="32" y1="31" x2="32" y2="21" stroke="#fffdf8" stroke-width="4" stroke-linecap="round" />
+            <line x1="32" y1="31" x2="32" y2="21" stroke="#fffdf8" strokeWidth="4" strokeLinecap="round" />
           </svg>
           <span className="text-base font-semibold tracking-tight">Akidoro</span>
         </div>
