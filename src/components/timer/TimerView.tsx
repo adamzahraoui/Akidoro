@@ -70,7 +70,7 @@ export function TimerView() {
 
   const currentProject = projects?.find((project: any) => project.id === (state.projectId ?? currentProjectId)) ?? null;
   useEffect(() => {
-    const modeEmoji = state.mode === 'focus' ? '🍅' : state.mode === 'short' ? '☕' : '🌙';
+    const modeEmoji = state.mode === 'focus' ? '⏱️' : state.mode === 'short' ? '☕' : '🌙';
     const suffix = state.status === 'running'
       ? `(${formatClock(remaining)}) ${modeLabel(state.mode)} - Akidoro`
       : state.status === 'paused'
