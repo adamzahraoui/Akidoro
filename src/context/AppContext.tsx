@@ -766,6 +766,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       settingsRef.current = next;
     }
 
+    // Remove the now-merged account-scoped keys so the recovery banner cannot reappear.
+    try {
+      const scopedKeys = [
+        `${STORAGE_KEYS.settings}.${scopeId}`,
+        `${STORAGE_KEYS.sessions}.${scopeId}`,
+        `${STORAGE_KEYS.notes}.${scopeId}`,
+      ];
+      for (const key of scopedKeys) {
+        if (typeof localStorage !== 'undefined') localStorage.removeItem(key);
+        // Mirror the deletion into the durable local store.
+        void import('../lib/idb').then(({ idbRemove }) => idbRemove(key));
+      }
+    } catch {
+      /* best effort */
+    }
+
+    setAccountScopeIds((scopes) => scopes.filter((scope) => scope !== scopeId));
     setAccountImportPending(false);
   }, [commitNotes]);
 
