@@ -17,6 +17,7 @@ export function createTimerState(
   settings: Settings,
   label = '',
   focusCount = 0,
+  projectId: string | null = null,
 ): TimerState {
   return {
     mode,
@@ -27,6 +28,7 @@ export function createTimerState(
     sessionId: uid('session'),
     label,
     focusCount,
+    projectId,
   };
 }
 

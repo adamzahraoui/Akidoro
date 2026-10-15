@@ -42,11 +42,14 @@ export function MusicPanel() {
         {provider === 'youtube' ? <YouTubePanel /> : <SpotifyPanel />}
       </div>
 
-      <p className="mt-3 text-[11px] leading-relaxed muted">
-        Paste a link to load the official {provider === 'youtube' ? 'YouTube' : 'Spotify'} player.
-        Music is independent of the timer, works without signing in, and only one provider plays at
-        a time.
-      </p>
+      <details className="mt-3 text-[11px] leading-relaxed muted">
+        <summary className="cursor-pointer text-xs font-medium text-stone-600 dark:text-stone-300">Help</summary>
+        <p className="mt-2">
+          Paste a link to load the official {provider === 'youtube' ? 'YouTube' : 'Spotify'} player.
+          Music is independent of the timer, works without signing in, and only one provider plays at
+          a time.
+        </p>
+      </details>
     </aside>
   );
 }

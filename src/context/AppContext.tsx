@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { DEFAULT_SETTINGS } from '../types';
-import type { Note, SavedMusicLink, Session, Settings, Task } from '../types';
+import type { Note, Project, SavedMusicLink, Session, Settings, Task } from '../types';
 import {
   STORAGE_KEYS,
   appendSession,
@@ -16,6 +16,8 @@ import {
   readSessions,
   readSettingsMeta,
   readCurrentTaskId,
+  readProjects,
+  writeProjects,
   readSavedMusic,
   readStoredSettings,
   hydrateFromIndexedDB,
@@ -60,14 +62,33 @@ interface AppContextValue {
   importBackup: (json: string) => Promise<{ ok: boolean; message: string }>;
   timer: UseTimerResult;
   notes: Note[];
-  createNote: () => string;
-  updateNote: (id: string, patch: { title?: string; content?: string }) => void;
+  sessionSummary: {
+    sessionId: string;
+    mode: import('../types').Mode;
+    durationSec: number;
+    label: string | null;
+    taskId: string | null;
+    projectId: string | null;
+    at: number;
+  } | null;
+  dismissSessionSummary: () => void;
+  projects: Project[];
+  createProject: (name: string, description?: string, color?: string) => string;
+  updateProject: (id: string, patch: Partial<Omit<Project,'id'|'createdAt'>>) => void;
+  archiveProject: (id: string) => void;
+  restoreProject: (id: string) => void;
+  deleteProject: (id: string) => void;
+  currentProjectId: string | null;
+  selectProject: (id: string | null) => void;
+  createNote: (projectId?: string | null) => string;
+  updateNote: (id: string, patch: { title?: string; content?: string; pinned?: boolean; projectId?: string | null }) => void;
   deleteNote: (id: string) => void;
   restoreNote: (id: string) => void;
   tasks: import('../types').Task[];
-  createTask: (title: string) => string;
+  createTask: (title: string, projectId?: string | null) => string;
   renameTask: (id: string, title: string) => void;
   toggleTask: (id: string) => void;
+  setTaskProject: (id: string, projectId: string | null) => void;
   deleteTask: (id: string) => void;
   currentTaskId: string | null;
   selectTask: (id: string | null) => void;
@@ -146,13 +167,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   sessionsRef.current = sessions;
 
   const [notesAll, setNotesAll] = useState<Note[]>(readNotes);
+  const [sessionSummary, setSessionSummary] = useState<{
+    sessionId: string;
+    mode: import('../types').Mode;
+    durationSec: number;
+    label: string | null;
+    taskId: string | null;
+    projectId: string | null;
+    at: number;
+  } | null>
+  (null);
   const [tasks, setTasks] = useState<Task[]>(readTasks);
+  const [projects, setProjects] = useState<Project[]>(readProjects);
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(
+    () => (typeof localStorage !== 'undefined' ? localStorage.getItem('akidoro.currentProject.v1') : null),
+  );
   const [currentTaskId, setCurrentTaskId] = useState<string | null>(readCurrentTaskId());
   const [savedMusic, setSavedMusic] = useState<SavedMusicLink[]>(readSavedMusic());
   const notesAllRef = useRef(notesAll);
   notesAllRef.current = notesAll;
   const tasksRef = useRef(tasks);
   tasksRef.current = tasks;
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
+  const currentProjectIdRef = useRef(currentProjectId);
+  currentProjectIdRef.current = currentProjectId;
   const currentTaskIdRef = useRef(currentTaskId);
   currentTaskIdRef.current = currentTaskId;
   const savedMusicRef = useRef(savedMusic);
@@ -175,6 +214,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTasks(readTasks());
       setSavedMusic(readSavedMusic());
       setCurrentTaskId(readCurrentTaskId());
+      setProjects(readProjects());
     })();
     return () => { cancelled = true; };
   }, []);
@@ -191,6 +231,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     tasksRef.current = next;
   }, []);
 
+  const commitProjects = useCallback((next: Project[]) => {
+    writeProjects(next);
+    setProjects(next);
+    projectsRef.current = next;
+  }, []);
+
   const commitSavedMusic = useCallback((next: SavedMusicLink[]) => {
     writeSavedMusic(next);
     setSavedMusic(next);
@@ -199,8 +245,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleSessionEnd = useCallback(
     (event: SessionEndEvent) => {
-      const sessionWithTask = { ...event.session, taskId: event.session.taskId ?? currentTaskIdRef.current };
+      const sessionWithTask = {
+        ...event.session,
+        taskId: event.session.taskId ?? currentTaskIdRef.current,
+        projectId: event.session.projectId ?? currentProjectIdRef.current,
+      };
       setSessions(appendSession(sessionWithTask));
+      if (event.session.completed) {
+        setSessionSummary({
+          sessionId: event.session.id,
+          mode: event.session.mode,
+          durationSec: event.session.durationSec,
+          label: event.session.label || null,
+          taskId: sessionWithTask.taskId ?? null,
+          projectId: sessionWithTask.projectId ?? null,
+          at: Date.now(),
+        });
+      }
       const config = settingsRef.current;
       if (!event.recovered && event.session.completed) {
         const isFocus = event.session.mode === 'focus';
@@ -219,7 +280,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const timer = useTimer(settings, handleSessionEnd);
+  const timer = useTimer(settings, { onSessionEnd: handleSessionEnd, getProjectId: () => currentProjectIdRef.current });
 
   const notes = useMemo(() => activeNotes(notesAll), [notesAll]);
 
@@ -274,6 +335,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sessions: sessionsRef.current,
         notes: notesAllRef.current,
         tasks: tasksRef.current,
+        projects: projectsRef.current,
         savedMusic: savedMusicRef.current,
         whiteboards,
       },
@@ -293,13 +355,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       return { ok: false, message: 'Backup file is invalid.' };
     }
     const body = parsed as Record<string, unknown>;
-    if (body.app !== 'Akidoro' || body.version !== 1) {
+    if (body.app !== 'Akidoro' || (body.version !== 1 && body.version !== 2)) {
       return { ok: false, message: 'Unsupported backup format or version.' };
     }
     const importedSettings =
       body.settings && typeof body.settings === 'object' ? (body.settings as Record<string, unknown>) : null;
     const importedSessions = Array.isArray(body.sessions) ? body.sessions : null;
     const importedNotes = Array.isArray(body.notes) ? body.notes : null;
+    const importedProjects = Array.isArray(body.projects) ? body.projects : [];
     const importedTasks = Array.isArray(body.tasks) ? body.tasks : [];
     const importedMusic = Array.isArray(body.savedMusic) ? body.savedMusic : [];
     const importedWhiteboards = Array.isArray(body.whiteboards) ? body.whiteboards : [];
@@ -332,7 +395,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const rawDeleted = row.deletedAt == null ? null : Math.round(Number(row.deletedAt) || 0);
       const deletedAt = rawDeleted == null || rawDeleted <= 0 ? null : rawDeleted;
       if (deletedAt !== null && deletedAt < createdAt) continue;
-      notesToImport.push({ id, title, content, createdAt, updatedAt, deletedAt });
+      const projectRaw = row.projectId;
+      const projectId = typeof projectRaw === 'string' ? projectRaw : null;
+      const pinned = Boolean(row.pinned);
+      notesToImport.push({ id, title, content, pinned, projectId, createdAt, updatedAt, deletedAt });
     }
 
     const hasExisting = sessionsRef.current.length > 0 || notesAllRef.current.length > 0 || readStoredSettings() !== null;
@@ -341,6 +407,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
         'This backup will be merged into the current local data by id (duplicates are skipped). Continue?',
       );
       if (!ok) return { ok: false, message: 'Import cancelled.' };
+    }
+
+    const existingProjectIds = new Set(projectsRef.current.map((p) => p.id));
+    const projectIdMap = new Map<string, string>();
+    const sanitizedProjects: Project[] = [];
+    for (const item of importedProjects) {
+      if (!item || typeof item !== 'object') continue;
+      const row = item as Record<string, unknown>;
+      const originalId = String(row.id ?? '').slice(0, 200);
+      if (!originalId) continue;
+      let id = originalId;
+      if (existingProjectIds.has(id)) {
+        id = crypto.randomUUID();
+      }
+      existingProjectIds.add(id);
+      projectIdMap.set(originalId, id);
+      const createdAt = Math.round(Number(row.createdAt) || Date.now());
+      const updatedAt = Math.round(Number(row.updatedAt) || Date.now());
+      sanitizedProjects.push({
+        id,
+        name: String(row.name ?? 'Imported project').slice(0, 200),
+        description: String(row.description ?? '').slice(0, 2000),
+        color: String(row.color ?? '#dc2626'),
+        archived: Boolean(row.archived),
+        createdAt,
+        updatedAt,
+      });
+    }
+    if (sanitizedProjects.length) {
+      const projectMap = new Map(projectsRef.current.map((p) => [p.id, p]));
+      for (const p of sanitizedProjects) if (!projectMap.has(p.id)) projectMap.set(p.id, p);
+      commitProjects([...projectMap.values()]);
+    }
+
+    for (const session of sessionsToImport) {
+      if (typeof session.projectId === 'string') {
+        session.projectId = projectIdMap.get(session.projectId) ?? session.projectId;
+      }
+    }
+    for (const note of notesToImport) {
+      if (typeof note.projectId === 'string') {
+        note.projectId = projectIdMap.get(note.projectId) ?? note.projectId;
+      }
     }
 
     if (importedSettings) {
@@ -370,12 +479,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!id || existingIds.has(id)) id = crypto.randomUUID();
       existingIds.add(id);
       const scene = row.scene && typeof row.scene === 'object' ? row.scene : { elements: [], appState: {}, files: {} };
+      const boardProjectRaw = row.projectId;
+      const boardProjectId = typeof boardProjectRaw === 'string' ? (projectIdMap.get(boardProjectRaw) ?? boardProjectRaw) : null;
       const board = {
         id,
         name: String(row.name ?? 'Imported board').slice(0, 200),
         createdAt: Math.round(Number(row.createdAt) || Date.now()),
         updatedAt: Math.round(Number(row.updatedAt) || Date.now()),
         scene,
+        projectId: boardProjectId,
       };
       try {
         await putWhiteboard(board as any);
@@ -394,7 +506,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const createdAt = Math.round(Number(row.createdAt) || 0);
       const updatedAt = Math.round(Number(row.updatedAt) || 0);
       if (createdAt <= 0 || updatedAt <= 0) continue;
-      sanitizedTasks.push({ id, title, completed: Boolean(row.completed), createdAt, updatedAt });
+      const taskProjectRaw = row.projectId;
+      const taskProjectId = typeof taskProjectRaw === 'string' ? (projectIdMap.get(taskProjectRaw) ?? taskProjectRaw) : null;
+      sanitizedTasks.push({ id, title, completed: Boolean(row.completed), projectId: taskProjectId, createdAt, updatedAt });
     }
     const taskMap = new Map(tasksRef.current.map((t) => [t.id, t]));
     for (const task of sanitizedTasks) if (!taskMap.has(task.id)) taskMap.set(task.id, task);
@@ -417,12 +531,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ok: true, message: 'Backup imported and saved locally.' };
   }, []);
 
-  const createNote = useCallback((): string => {
+  const createNote = useCallback((projectId = currentProjectIdRef.current): string => {
     const now = Date.now();
     const note: Note = {
       id: uid('note'),
       title: '',
       content: '',
+      pinned: false,
+      projectId: projectId ?? currentProjectIdRef.current,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
@@ -455,9 +571,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     commitNotes(next);
   }, [commitNotes]);
 
-  const createTask = useCallback((title: string): string => {
+  const createTask = useCallback((title: string, projectId?: string | null): string => {
     const now = Date.now();
-    const task: Task = { id: uid('task'), title: title.trim(), completed: false, createdAt: now, updatedAt: now };
+    const task: Task = {
+      id: uid('task'),
+      title: title.trim(),
+      completed: false,
+      projectId: projectId ?? currentProjectIdRef.current,
+      createdAt: now,
+      updatedAt: now,
+    };
     commitTasks([...tasksRef.current, task]);
     return task.id;
   }, [commitTasks]);
@@ -469,6 +592,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const toggleTask = useCallback((id: string) => {
     const next = tasksRef.current.map((t) => (t.id === id ? { ...t, completed: !t.completed, updatedAt: Date.now() } : t));
+    commitTasks(next);
+  }, [commitTasks]);
+
+  const setTaskProject = useCallback((id: string, projectId: string | null) => {
+    const next = tasksRef.current.map((t) => (t.id === id ? { ...t, projectId, updatedAt: Date.now() } : t));
     commitTasks(next);
   }, [commitTasks]);
 
@@ -488,6 +616,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (task) {
         const s = timer.state;
         if (s.status === 'idle' && s.segments.length === 0) timer.controls.setLabel(task.title);
+        if (task.projectId && task.projectId !== currentProjectIdRef.current) selectProject(task.projectId);
       }
     }
   }, [timer]);
@@ -506,6 +635,76 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteSavedMusic = useCallback((id: string) => {
     commitSavedMusic(savedMusicRef.current.filter((m) => m.id !== id));
   }, [commitSavedMusic]);
+
+  const selectProject = useCallback((id: string | null) => {
+    setCurrentProjectId(id);
+    try {
+      if (typeof localStorage !== 'undefined') {
+        if (id) localStorage.setItem('akidoro.currentProject.v1', id);
+        else localStorage.removeItem('akidoro.currentProject.v1');
+      }
+    } catch {
+      /* ignore */
+    }
+    const s = timer.state;
+    if (id && s.status === 'idle' && s.segments.length === 0) {
+      commitProjects(projectsRef.current);
+    }
+  }, [timer]);
+
+  const createProject = useCallback((name: string, description = '', color = '#dc2626'): string => {
+    const now = Date.now();
+    const project: Project = {
+      id: uid('project'),
+      name: name.trim() || 'Untitled project',
+      description: description.trim(),
+      color,
+      archived: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    commitProjects([...projectsRef.current, project]);
+    return project.id;
+  }, []);
+
+  const updateProject = useCallback((id: string, patch: Partial<Omit<Project, 'id' | 'createdAt'>>) => {
+    const next = projectsRef.current.map((p) =>
+      p.id === id ? { ...p, ...patch, updatedAt: Date.now() } : p,
+    );
+    commitProjects(next);
+  }, []);
+
+  const archiveProject = useCallback((id: string) => {
+    updateProject(id, { archived: true });
+  }, [updateProject]);
+
+  const restoreProject = useCallback((id: string) => {
+    updateProject(id, { archived: false });
+  }, [updateProject]);
+
+  const deleteProject = useCallback((id: string) => {
+    const project = projectsRef.current.find((p) => p.id === id);
+    if (!project) return;
+    const confirmed = window.confirm(
+      `Delete project “${project.name}”? Notes, tasks, whiteboards, and historical focus records stay available. They will become unassigned.`,
+    );
+    if (!confirmed) return;
+    commitProjects(projectsRef.current.filter((p) => p.id !== id));
+    commitTasks(tasksRef.current.map((t) => (t.projectId === id ? { ...t, projectId: null, updatedAt: Date.now() } : t)));
+    commitNotes(notesAllRef.current.map((n) => (n.projectId === id ? { ...n, projectId: null, updatedAt: Date.now() } : n)));
+    // whiteboards load asynchronously and preserve scene data.
+    void (async () => {
+      const boards = await getAllWhiteboards().catch(() => []);
+      for (const board of boards as any[]) {
+        if (board?.projectId === id) {
+          await putWhiteboard({ ...board, projectId: null, updatedAt: Date.now() });
+        }
+      }
+    })();
+    if (currentProjectIdRef.current === id) selectProject(null);
+  }, [commitProjects, commitTasks, commitNotes, selectProject]);
+
+  const dismissSessionSummary = useCallback(() => setSessionSummary(null), []);
 
   const recoverIndexedDb = useCallback(async (keys?: string[]): Promise<number> => {
     const recovered = await recoverFromIndexedDb(keys);
@@ -613,10 +812,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       importBackup,
       timer,
       notes,
+      sessionSummary,
+      dismissSessionSummary,
+      projects,
+      createProject,
+      updateProject,
+      archiveProject,
+      restoreProject,
+      deleteProject,
+      currentProjectId,
+      selectProject,
       tasks,
       createTask,
       renameTask,
       toggleTask,
+      setTaskProject,
       deleteTask,
       currentTaskId,
       selectTask,
@@ -657,11 +867,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       exportBackup,
       importBackup,
       timer,
+      projects,
+      createProject,
+      updateProject,
+      archiveProject,
+      restoreProject,
+      deleteProject,
+      currentProjectId,
+      selectProject,
       notes,
       tasks,
       createTask,
       renameTask,
       toggleTask,
+      setTaskProject,
       deleteTask,
       currentTaskId,
       selectTask,

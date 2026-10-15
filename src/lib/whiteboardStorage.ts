@@ -1,6 +1,7 @@
 export interface WhiteboardBoard {
   id: string;
   name: string;
+  projectId?: string | null;
   createdAt: number;
   updatedAt: number;
   scene: unknown;

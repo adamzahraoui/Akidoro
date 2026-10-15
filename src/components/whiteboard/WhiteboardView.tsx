@@ -26,6 +26,7 @@ export function WhiteboardView() {
   const [scene, setScene] = useState<WhiteboardState | null>(null);
   const [ready, setReady] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [showTemplates, setShowTemplates] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const activeIdRef = useRef<string | null>(null);
   const currentSceneRef = useRef<WhiteboardState | null>(null);
@@ -123,23 +124,76 @@ export function WhiteboardView() {
     scheduleSave();
   };
 
-  async function createBoard() {
+  async function createBoard(template: string = 'blank') {
     const now = Date.now();
+    const templateElements = await templateSkeletons(template);
+    const scene = { elements: templateElements, appState: {} as any, files: {} as any };
     const board: WhiteboardBoard = {
       id: crypto.randomUUID(),
-      name: 'Untitled board',
+      name: template === 'blank' ? 'Untitled board' : `New ${templateLabel(template)} board`,
       createdAt: now,
       updatedAt: now,
-      scene: { elements: [], appState: {}, files: {} },
+      scene,
+      projectId: null,
     };
     await putWhiteboard(board);
     const all = await getAllWhiteboards();
     setBoards(all.sort((a, b) => b.updatedAt - a.updatedAt));
     activeIdRef.current = board.id;
     setActiveId(board.id);
-    setScene({ elements: [], appState: {}, files: {} });
-    currentSceneRef.current = { elements: [], appState: {}, files: {} };
+    setScene({
+      elements: templateElements,
+      appState: {} as any,
+      files: {} as any,
+    });
+    currentSceneRef.current = { elements: templateElements, appState: {}, files: {} };
     setReady(true);
+    setShowTemplates(false);
+  }
+
+  async function templateSkeletons(template: string): Promise<any[]> {
+    if (template === 'blank') return [];
+    const module = (await import('@excalidraw/excalidraw')) as any;
+    const convert = module.convertToExcalidrawElements ?? module.default?.convertToExcalidrawElements;
+    const skeletonByTemplate: Record<string, any[]> = {
+      mindmap: [
+        { type: 'rectangle', x: -100, y: -40, width: 200, height: 80, label: { text: 'Central idea' } },
+        { type: 'text', x: -200, y: 120, text: 'Branch 1' },
+        { type: 'text', x: 160, y: 120, text: 'Branch 2' },
+      ],
+      weekly: [
+        { type: 'rectangle', x: 0, y: 0, width: 900, height: 150, label: { text: 'Weekly plan' } },
+        { type: 'rectangle', x: 0, y: 180, width: 120, height: 240, label: { text: 'Mon' } },
+        { type: 'rectangle', x: 140, y: 180, width: 120, height: 240, label: { text: 'Tue' } },
+        { type: 'rectangle', x: 280, y: 180, width: 120, height: 240, label: { text: 'Wed' } },
+        { type: 'rectangle', x: 420, y: 180, width: 120, height: 240, label: { text: 'Thu' } },
+        { type: 'rectangle', x: 560, y: 180, width: 120, height: 240, label: { text: 'Fri' } },
+      ],
+      brainstorm: [
+        { type: 'rectangle', x: -160, y: -80, width: 320, height: 120, label: { text: 'Brainstorming' } },
+        { type: 'text', x: -200, y: 60, text: 'Idea one' },
+        { type: 'text', x: 100, y: 60, text: 'Idea two' },
+        { type: 'text', x: -200, y: 120, text: 'Idea three' },
+        { type: 'text', x: 100, y: 120, text: 'Idea four' },
+      ],
+      flowchart: [
+        { type: 'ellipse', x: 0, y: 0, width: 140, height: 80, label: { text: 'Start' } },
+        { type: 'rectangle', x: 0, y: 120, width: 140, height: 80, label: { text: 'Process' } },
+        { type: 'diamond', x: 0, y: 240, width: 140, height: 100, label: { text: 'Decision' } },
+        { type: 'ellipse', x: 0, y: 380, width: 140, height: 80, label: { text: 'End' } },
+      ],
+    };
+    const selected = skeletonByTemplate[template] ?? [];
+    if (!convert || selected.length === 0) return selected;
+    try {
+      return convert(selected, { regenerateIds: true });
+    } catch {
+      return selected;
+    }
+  }
+
+  function templateLabel(template: string): string {
+    return template === 'mindmap' ? 'Mind map' : template === 'weekly' ? 'Weekly plan' : template === 'brainstorm' ? 'Brainstorming' : 'Flowchart';
   }
 
   async function selectBoard(id: string) {
@@ -272,8 +326,20 @@ export function WhiteboardView() {
           ))}
         </select>
         <Button size="sm" variant="primary" className="shrink-0" onClick={() => void createBoard()}>
-          New board
+          New blank board
         </Button>
+        <Button size="sm" variant="secondary" className="shrink-0" onClick={() => setShowTemplates((value) => !value)}>
+          Templates
+        </Button>
+        {showTemplates ? (
+          <>
+            <Button size="sm" variant="secondary" className="shrink-0" onClick={() => void createBoard('mindmap')}>Mind map</Button>
+            <Button size="sm" variant="secondary" className="shrink-0" onClick={() => void createBoard('weekly')}>Weekly plan</Button>
+            <Button size="sm" variant="secondary" className="shrink-0" onClick={() => void createBoard('brainstorm')}>Brainstorming</Button>
+            <Button size="sm" variant="secondary" className="shrink-0" onClick={() => void createBoard('flowchart')}>Flowchart</Button>
+            <Button size="sm" variant="ghost" className="shrink-0" onClick={() => setShowTemplates(false)}>Cancel</Button>
+          </>
+        ) : null}
         <Button size="sm" variant="ghost" className="shrink-0" onClick={renameActive}>
           Rename
         </Button>

@@ -65,11 +65,35 @@ function DailyChart({ week }: { week: WeekStats }) {
 }
 
 export function StatisticsView() {
-  const { sessions, accountScopeIds, importAccountData } = useApp();
+  const { sessions, accountScopeIds, importAccountData, projects, tasks } = useApp();
   const [weekStart, setWeekStart] = useState(() => weekStartFor(Date.now()));
   const week = useMemo(() => computeWeek(sessions, weekStart), [sessions, weekStart]);
   const currentWeekStart = weekStartFor(Date.now());
   const isCurrent = weekStart === currentWeekStart;
+
+  const [projectFilter, setProjectFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [visibleCount, setVisibleCount] = useState(10);
+
+  const projectName = (id: string | null | undefined) => projects.find((p) => p.id === id)?.name ?? 'Unassigned';
+  const taskName = (id: string | null | undefined) => tasks.find((t) => t.id === id)?.title ?? '';
+
+  const filteredSessions = useMemo(() => {
+    return [...sessions]
+      .sort((a, b) => b.startedAt - a.startedAt)
+      .filter((session) => {
+        const bucketDate = new Date(session.startedAt).toISOString().slice(0, 10);
+        if (fromDate && bucketDate < fromDate) return false;
+        if (toDate && bucketDate > toDate) return false;
+        if (projectFilter === 'none' && session.projectId != null) return false;
+        if (projectFilter !== 'all' && projectFilter !== 'none' && session.projectId !== projectFilter) return false;
+        if (statusFilter === 'completed' && !session.completed) return false;
+        if (statusFilter === 'partial' && session.completed) return false;
+        return true;
+      });
+  }, [sessions, fromDate, toDate, projectFilter, statusFilter]);
 
   const weekEmpty = !week.days.some((d) => d.focusSec + d.breakSec > 0);
 
@@ -187,6 +211,73 @@ export function StatisticsView() {
           </Card>
         </>
       )}
+      {true ? (
+        <Card>
+          <CardTitle hint="Actual duration recorded">Session history</CardTitle>
+          <div className="mt-3 grid gap-3 sm:grid-cols-4">
+            <label className="text-xs">
+              From
+              <input type="date" value={fromDate} onChange={(e) => { setFromDate(e.target.value); setVisibleCount(10); }} className="focus-ring mt-1 w-full rounded-xl border subtle-border bg-surface-light px-2 py-1 text-sm dark:bg-surface-dark" />
+            </label>
+            <label className="text-xs">
+              To
+              <input type="date" value={toDate} onChange={(e) => { setToDate(e.target.value); setVisibleCount(10); }} className="focus-ring mt-1 w-full rounded-xl border subtle-border bg-surface-light px-2 py-1 text-sm dark:bg-surface-dark" />
+            </label>
+            <label className="text-xs">
+              Project
+              <select value={projectFilter} onChange={(e) => { setProjectFilter(e.target.value); setVisibleCount(10); }} className="focus-ring mt-1 w-full rounded-xl border subtle-border bg-surface-light px-2 py-1 text-sm dark:bg-surface-dark">
+                <option value="all">All projects</option>
+                <option value="none">Unassigned</option>
+                {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+              </select>
+            </label>
+            <label className="text-xs">
+              Status
+              <select value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setVisibleCount(10); }} className="focus-ring mt-1 w-full rounded-xl border subtle-border bg-surface-light px-2 py-1 text-sm dark:bg-surface-dark">
+                <option value="all">All statuses</option>
+                <option value="completed">Completed</option>
+                <option value="partial">Partial</option>
+              </select>
+            </label>
+          </div>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b subtle-border text-left muted">
+                  <th className="py-2 pr-3">Start</th>
+                  <th className="py-2 pr-3">Label or task</th>
+                  <th className="py-2 pr-3">Project</th>
+                  <th className="py-2 pr-3">Type</th>
+                  <th className="py-2 pr-3 text-right">Duration</th>
+                  <th className="py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSessions.slice(0, visibleCount).map((session) => (
+                  <tr key={session.id} className="border-b subtle-border last:border-0">
+                    <td className="py-2 pr-3 tabular-nums">
+                      {new Date(session.startedAt).toLocaleString()}
+                    </td>
+                    <td className="py-2 pr-3">{session.label?.trim() || taskName(session.taskId) || 'Untitled focus session'}</td>
+                    <td className="py-2 pr-3">{projectName(session.projectId)}</td>
+                    <td className="py-2 pr-3">{session.mode === 'focus' ? 'Focus' : session.mode === 'short' ? 'Short break' : 'Long break'}</td>
+                    <td className="py-2 pr-3 text-right tabular-nums">{Math.round(session.durationSec)} sec</td>
+                    <td className="py-2">{session.completed ? 'Completed' : 'Partial'}</td>
+                  </tr>
+                ))}
+                {filteredSessions.length === 0 ? (
+                  <tr><td colSpan={6} className="py-6 text-center muted">No sessions match these filters.</td></tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+          {visibleCount < filteredSessions.length ? (
+            <div className="mt-3">
+              <Button size="sm" onClick={() => setVisibleCount((count) => count + 10)}>Load more</Button>
+            </div>
+          ) : null}
+        </Card>
+      ) : null}
     </div>
   );
 }

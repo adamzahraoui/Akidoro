@@ -45,11 +45,21 @@ export interface UseTimerResult {
 const RECOVERY_THRESHOLD_MS = 3000;
 const TICK_MS = 500;
 
-export function useTimer(settings: Settings, onSessionEnd?: (event: SessionEndEvent) => void): UseTimerResult {
+interface UseTimerOptions {
+  onSessionEnd?: (event: SessionEndEvent) => void;
+  getProjectId?: () => string | null;
+}
+
+export function useTimer(settings: Settings, options: UseTimerOptions | ((event: SessionEndEvent) => void) = {}): UseTimerResult {
+  const resolvedOptions = typeof options === 'function' ? { onSessionEnd: options } : options;
+  const onSessionEnd = resolvedOptions.onSessionEnd;
+  const getProjectId = resolvedOptions.getProjectId;
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const onSessionEndRef = useRef(onSessionEnd);
   onSessionEndRef.current = onSessionEnd;
+  const getProjectIdRef = useRef(getProjectId);
+  getProjectIdRef.current = getProjectId;
 
   const [state, setState] = useState<TimerState>(() => {
     const persisted = readJSON<PersistedTimer | null>(STORAGE_KEYS.timer, null);
@@ -91,10 +101,10 @@ export function useTimer(settings: Settings, onSessionEnd?: (event: SessionEndEv
       const session = buildSession(s, endAt, true);
       const config = settingsRef.current;
       const advance = nextAfterCompletion(s, config);
-      const next = createTimerState(advance.mode, config, s.label, advance.focusCount);
       const autoStart =
         !recovered &&
         (advance.mode === 'focus' ? config.autoStartFocus : config.autoStartBreaks);
+      const next = createTimerState(advance.mode, config, s.label, advance.focusCount, autoStart ? (getProjectIdRef.current?.() ?? null) : null);
       if (autoStart) {
         next.status = 'running';
         next.activeStart = Date.now();
@@ -150,7 +160,7 @@ export function useTimer(settings: Settings, onSessionEnd?: (event: SessionEndEv
   const start = useCallback(() => {
     const s = stateRef.current;
     if (s.status === 'running') return;
-    commit({ ...s, status: 'running', activeStart: Date.now() });
+    commit({ ...s, status: 'running', activeStart: Date.now(), projectId: s.projectId ?? getProjectIdRef.current?.() ?? null });
   }, [commit]);
 
   const pause = useCallback(() => {

@@ -25,6 +25,8 @@ export interface TimerState {
   sessionId: string;
   /** Optional user label, e.g. "Learning React". */
   label: string;
+  /** Project selected when this timer state was created. Captured into the recorded session. */
+  projectId?: string | null;
   /** Number of focus sessions completed in the current long-break cycle. */
   focusCount: number;
 }
@@ -35,6 +37,8 @@ export interface Session {
   label: string;
   /** Task associated when the focus session began; optional for older data. */
   taskId?: string | null;
+  /** Project used to group this session; optional for older data and user-unassigned work. */
+  projectId?: string | null;
   /** First moment the session started (epoch ms). */
   startedAt: number;
   /** Last moment of activity (epoch ms). */
@@ -56,14 +60,27 @@ export interface Note {
   id: string;
   title: string;
   content: string;
+  pinned?: boolean;
+  projectId?: string | null;
   createdAt: number; // epoch ms
   updatedAt: number; // epoch ms
   deletedAt: number | null; // epoch ms tombstone, null = active
 }
 
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  color: string;
+  archived: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Task {
   id: string;
   title: string;
+  projectId?: string | null;
   completed: boolean;
   createdAt: number;
   updatedAt: number;

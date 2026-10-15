@@ -1,10 +1,11 @@
 import { useApp } from '../context/AppContext';
 import { cx } from '../lib/classNames';
 
-export type View = 'timer' | 'stats' | 'notes' | 'whiteboard' | 'settings';
+export type View = 'timer' | 'projects' | 'stats' | 'notes' | 'whiteboard' | 'settings';
 
 const BASE_TABS: Array<{ id: View; label: string }> = [
   { id: 'timer', label: 'Timer' },
+  { id: 'projects', label: 'Projects' },
   { id: 'stats', label: 'Statistics' },
   { id: 'notes', label: 'Notes' },
   { id: 'whiteboard', label: 'Whiteboard' },

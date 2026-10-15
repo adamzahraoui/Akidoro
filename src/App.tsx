@@ -5,6 +5,8 @@ import { TimerView } from './components/timer/TimerView';
 import { StatisticsView } from './components/stats/StatisticsView';
 import { NotesView } from './components/notes/NotesView';
 import { SettingsView } from './components/settings/SettingsView';
+import { SessionSummary } from './components/timer/SessionSummary';
+import { ProjectsView } from './components/projects/ProjectsView';
 const WhiteboardView = lazy(() => import('./components/whiteboard/WhiteboardView').then((m) => ({ default: m.WhiteboardView })));
 import { useApp } from './context/AppContext';
 
@@ -45,7 +47,7 @@ export default function App() {
   useEffect(() => {
     const onNavigate = (event: Event) => {
       const detail = (event as CustomEvent<string>).detail;
-      if (detail === 'notes' || detail === 'timer' || detail === 'stats' || detail === 'settings') {
+      if (detail === 'notes' || detail === 'timer' || detail === 'projects' || detail === 'stats' || detail === 'settings') {
         setView(detail as View);
       }
     };
@@ -57,6 +59,7 @@ export default function App() {
     <div className="min-h-full">
       <Nav view={view} onChange={setView} />
       <GuestMergeBanner />
+      <SessionSummary />
       {indexedDbRecoveryOffers.length ? (
         <div className="mx-auto max-w-5xl px-4 pt-4 sm:px-6">
           <div className="card flex flex-wrap items-center justify-between gap-3 border-accent-300 p-4 dark:border-accent-800">
@@ -108,6 +111,9 @@ export default function App() {
         {/* All views stay mounted so background music and timer state are never interrupted. */}
         <div hidden={view !== 'timer'}>
           <TimerView />
+        </div>
+        <div hidden={view !== 'projects'}>
+          <ProjectsView />
         </div>
         <div hidden={view !== 'stats'}>
           <StatisticsView />

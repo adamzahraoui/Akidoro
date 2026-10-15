@@ -77,7 +77,7 @@ export function QuickNotePanel({ onOpenInNotes }: { onOpenInNotes: () => void })
           </div>
         </div>
       ) : (
-        <p className="mt-2 text-xs muted">Keep the keyboard in this mental space.</p>
+        <p className="mt-2 text-xs muted">Capture a quick thought</p>
       )}
     </section>
   );

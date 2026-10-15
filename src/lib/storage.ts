@@ -6,6 +6,7 @@ export const STORAGE_KEYS = {
   sessions: 'akidoro.sessions.v1',
   notes: 'akidoro.notes.v1',
   tasks: 'akidoro.tasks.v1',
+  projects: 'akidoro.projects.v1',
   currentTask: 'akidoro.currentTask.v1',
   savedMusic: 'akidoro.savedMusic.v1',
   timer: 'akidoro.timer.v1',
@@ -449,4 +450,16 @@ export async function recoverFromIndexedDb(keys?: string[]): Promise<number> {
     }
   }
   return recovered;
+}
+
+
+// --- Projects -----------------------------------------------------------------
+export function readProjects(): import('../types').Project[] {
+  return readJSON<import('../types').Project[]>(projectsKey(), []);
+}
+export function writeProjects(projects: import('../types').Project[]): void {
+  writeJSON(projectsKey(), projects);
+}
+function projectsKey(): string {
+  return scoped(STORAGE_KEYS.projects);
 }

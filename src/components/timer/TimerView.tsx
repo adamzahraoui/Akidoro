@@ -26,6 +26,7 @@ export function TimerView() {
   const floatingRef = useRef<Window | null>(null);
   const [floatingMessage, setFloatingMessage] = useState<string | null>(null);
   const [floatingMode, setFloatingMode] = useState<'none' | 'pip' | 'popup'>('none');
+  const [focusMode, setFocusMode] = useState(false);
   const pipIntervalRef = useRef<number | null>(null);
 
   const isRunning = state.status === 'running';
@@ -53,6 +54,17 @@ export function TimerView() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [isRunning, controls]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && focusMode) {
+        event.preventDefault();
+        setFocusMode(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [focusMode]);
 
   const statusText = isRunning ? 'Running' : isPaused ? 'Paused' : 'Ready';
   const cycleText =
@@ -177,6 +189,13 @@ export function TimerView() {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
       <div className="space-y-6">
+      {focusMode ? (
+        <div className="mb-4 flex justify-end">
+          <Button size="sm" onClick={() => setFocusMode(false)} aria-label="Exit focus mode">
+            Exit focus mode (Esc)
+          </Button>
+        </div>
+      ) : null}
       <section className="card flex flex-col items-center px-5 py-8 sm:px-8" aria-labelledby="timer-heading">
         <h1 id="timer-heading" className="sr-only">
           Pomodoro timer
@@ -270,6 +289,9 @@ export function TimerView() {
           <Button size="sm" variant="secondary" onClick={() => void openFloatingTimer()}>
             Open floating timer
           </Button>
+          <Button size="sm" variant={focusMode ? 'primary' : 'secondary'} onClick={() => setFocusMode((current) => !current)}>
+            {focusMode ? 'Exit focus mode' : 'Focus mode'}
+          </Button>
           {isPipSupported ? null : (
             <span className="text-xs muted">Uses a compact browser popup; it may not stay on top of other apps.</span>
           )}
@@ -285,11 +307,13 @@ export function TimerView() {
         </p>
       </section>
 
-        <TodayProgress />
-        <QuickNotePanel onOpenInNotes={() => window.dispatchEvent(new CustomEvent('akidoro:navigate', { detail: 'notes' }))} />
+        <div hidden={focusMode}>
+          <TodayProgress />
+          <QuickNotePanel onOpenInNotes={() => window.dispatchEvent(new CustomEvent('akidoro:navigate', { detail: 'notes' }))} />
+        </div>
       </div>
 
-      <div className="space-y-6">
+      <div className={focusMode ? 'hidden' : 'space-y-6'}>
         <MusicPanel />
         <TaskList />
       </div>

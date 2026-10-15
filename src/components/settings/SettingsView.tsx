@@ -186,6 +186,11 @@ export function SettingsView() {
         <CardTitle hint={`${sessions.length} stored session${sessions.length === 1 ? '' : 's'}`}>
           Data & privacy
         </CardTitle>
+        <p className="mt-2 text-sm muted">
+          Browser storage is isolated by origin. Data recorded on one Akidoro address is not available on
+          another, and vice versa. Use Export backup and Import backup to move data safely. Recovery notices
+          appear automatically when browser storage contains records that are missing from the active view.
+        </p>
         <p className="text-sm muted">
           'Notes, settings, timer progress and session history are stored only in this browser profile: they are not synced across devices and may be lost if site data is cleared. Sharing a browser profile means sharing this local data.'
         </p>
