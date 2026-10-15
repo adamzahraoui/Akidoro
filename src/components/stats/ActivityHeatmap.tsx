@@ -13,10 +13,10 @@ function heatLevel(minutes: number): number {
 
 const heatColor: Record<number, string> = {
   0: 'bg-stone-200 dark:bg-stone-800',
-  1: 'bg-red-200 dark:bg-red-950/60',
-  2: 'bg-red-400 dark:bg-red-800',
-  3: 'bg-red-500 dark:bg-red-600',
-  4: 'bg-red-600 dark:bg-red-500',
+  1: 'bg-green-200 dark:bg-green-950/60',
+  2: 'bg-green-400 dark:bg-green-800',
+  3: 'bg-green-500 dark:bg-green-600',
+  4: 'bg-green-600 dark:bg-green-500',
 };
 
 function formatMinutes(minutes: number): string {
